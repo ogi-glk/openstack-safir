@@ -107,13 +107,11 @@
   changed_when: scw_start_res.rc == 0
   failed_when: false
 
-- name: Ensure DNS resolution inside container
+- name: Ensure container inherits host DNS configuration
   ansible.builtin.copy:
+    src: "/etc/resolv.conf"
     dest: "/var/lib/lxc/{{ scw_ct }}/rootfs/etc/resolv.conf"
-    content: |
-      nameserver 10.0.3.1
-      nameserver 8.8.8.8
-      nameserver 1.1.1.1
+    remote_src: true
     mode: "0644"
 
 - name: Reload container networkd, bring up interfaces and apply static IP
@@ -139,8 +137,7 @@
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ scw_ct }} -- bash -c
-      "echo -e 'nameserver 10.0.3.1\nnameserver 8.8.8.8' > /etc/resolv.conf &&
-       dhclient -4 eth1 2>/dev/null || true;
+      "dhclient -4 eth1 2>/dev/null || true;
        apt-get update -qq && apt-get install -y -qq python3-venv python3-pip uwsgi uwsgi-plugin-python3 git &&
        mkdir -p /openstack/venvs/safircloudwatcher-31.2.0 &&
        python3 -m venv /openstack/venvs/safircloudwatcher-31.2.0 &&
