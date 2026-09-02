@@ -21,21 +21,25 @@ if [ "${1:-}" != "" ] && [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 [openstack_host]
 target_node ansible_host=${TARGET_IP} ansible_user=root
 
-[deployer]
-deployer ansible_host=127.0.0.1 ansible_connection=local
+[deployer_node]
+deployer_local ansible_host=127.0.0.1 ansible_connection=local
 
 [all:vars]
 ansible_python_interpreter=/usr/bin/python3
 EOF
 fi
 
-# 2. Check Ansible installation
+# 2. Export environment variables for Ansible
+export ANSIBLE_CONFIG="${SCRIPT_DIR}/ansible.cfg"
+export ANSIBLE_ROLES_PATH="${SCRIPT_DIR}/roles"
+
+# 3. Check Ansible installation
 if ! command -v ansible-playbook &> /dev/null; then
     echo "[!] Ansible not found. Installing Ansible and required dependencies..."
     apt-get update -qq && apt-get install -y -qq ansible python3-pip
 fi
 
-# 3. Check inventory presence
+# 4. Check inventory presence
 if [ ! -f "inventory/hosts.ini" ]; then
     echo "[CRITICAL ERROR] inventory/hosts.ini not found!"
     exit 1
