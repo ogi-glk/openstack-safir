@@ -6,3 +6,4 @@
 safirmonitoring_gunicorn_workers: 2
 safirmonitoring_gunicorn_reuse_port: "False"
 safirmonitoring_health_endpoint: "/docs"
+sm_ct: "{{ safirmonitoring_container_name }}"

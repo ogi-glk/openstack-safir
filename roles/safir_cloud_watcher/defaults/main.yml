@@ -5,6 +5,7 @@
 
 safircloudwatcher_conf_path: "/etc/safir_cloud_watcher/safir_cloud_watcher.conf"
 safircloudwatcher_rabbit_user: "safir_cloud_watcher"
+scw_ct: "{{ safircloudwatcher_container_name }}"
 
 safircloudwatcher_monitored_services:
   - name: "nova"
