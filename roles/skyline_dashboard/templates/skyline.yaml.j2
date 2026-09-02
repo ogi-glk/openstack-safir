@@ -17,7 +17,7 @@ openstack:
   default_region: "{{ skyline_default_region }}"
   region_name: "{{ skyline_region_name }}"
   user_default_domain: "{{ skyline_user_default_domain }}"
-  interface: "{{ skyline_interface }}"
+  interface_type: "{{ skyline_interface | default('internal') }}"
   insecure: {{ 'true' if skyline_insecure else 'false' }}
   system_user_name: "{{ skyline_admin_user }}"
   system_user_password: "{{ skyline_admin_password }}"

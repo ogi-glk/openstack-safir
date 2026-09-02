@@ -13,7 +13,7 @@ skyline_keystone_url: "{{ keystone_auth_url }}"
 skyline_default_region: "RegionOne"
 skyline_region_name: "RegionOne"
 skyline_user_default_domain: "Default"
-skyline_interface: "public"
+skyline_interface: "internal"
 skyline_insecure: true
 skyline_ssl_verify: false
 
