@@ -1,0 +1,27 @@
+{
+  "user": [
+    "libvirt_domain_info_virtual_cpus",
+    "libvirt_domain_cpu_utilization_perc",
+    "libvirt_domain_info_maximum_memory_bytes",
+    "libvirt_domain_memory_stats_used_percent",
+    "libvirt_domain_block_stats_capacity_bytes",
+    "libvirt_domain_block_stats_read_bytes_total",
+    "libvirt_domain_block_stats_write_bytes_total",
+    "libvirt_domain_interface_stats_transmit_bytes_total",
+    "libvirt_domain_interface_stats_receive_bytes_total"
+  ],
+  "system": [
+    "node_cpu_seconds_total",
+    "node_load1",
+    "node_load5",
+    "node_memory_MemTotal_bytes",
+    "node_memory_MemAvailable_bytes",
+    "node_memory_MemFree_bytes",
+    "node_filesystem_size_bytes",
+    "node_filesystem_avail_bytes",
+    "node_disk_read_bytes_total",
+    "node_disk_written_bytes_total",
+    "node_network_receive_bytes_total",
+    "node_network_transmit_bytes_total"
+  ]
+}

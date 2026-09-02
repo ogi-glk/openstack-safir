@@ -1,0 +1,214 @@
+---
+# ==============================================================================
+# OpenSearch & Dashboards Automation Tasks
+# ==============================================================================
+
+- name: Configure Linux kernel vm.max_map_count on host
+  ansible.posix.sysctl:
+    name: vm.max_map_count
+    value: "262144"
+    state: present
+    reload: true
+
+- name: Check if OpenSearch LXC container exists
+  ansible.builtin.command:
+    cmd: "lxc-info -n {{ opensearch_container_name }}"
+  register: os_container_check
+  changed_when: false
+  failed_when: false
+
+- name: Create OpenSearch LXC container if missing
+  ansible.builtin.command: >
+    lxc-create -n {{ opensearch_container_name }} -t download --
+    --dist {{ opensearch_lxc_template_dist }}
+    --release {{ opensearch_lxc_template_release }}
+    --arch {{ opensearch_lxc_template_arch }}
+    --force-cache --server images.linuxcontainers.org
+  when: os_container_check.rc != 0
+
+- name: Write LXC network interface configuration (eth0.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ opensearch_container_name }}/eth0.ini"
+    content: |
+      lxc.net.0.type = veth
+      lxc.net.0.link = {{ openstack_management_bridge }}
+      lxc.net.0.flags = up
+      lxc.net.0.hwaddr = {{ opensearch_mac_eth0 }}
+      lxc.net.0.veth.pair = os_eth1
+    mode: "0644"
+
+- name: Write LXC network interface configuration (eth1.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ opensearch_container_name }}/eth1.ini"
+    content: |
+      lxc.net.1.type = veth
+      lxc.net.1.link = {{ openstack_nat_bridge }}
+      lxc.net.1.flags = up
+      lxc.net.1.hwaddr = {{ opensearch_mac_eth1 }}
+      lxc.net.1.veth.pair = os_eth0
+    mode: "0644"
+
+- name: Configure container config includes and startup parameters
+  ansible.builtin.blockinfile:
+    path: "/var/lib/lxc/{{ opensearch_container_name }}/config"
+    marker: "# {mark} ANSIBLE MANAGED OPENSEARCH CONFIG"
+    block: |
+      lxc.apparmor.profile = generated
+      lxc.apparmor.allow_nesting = 1
+      lxc.start.auto = 1
+      lxc.start.delay = 15
+      lxc.group = onboot
+      lxc.group = openstack
+      lxc.start.order = 100
+      lxc.autodev = 1
+      lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+      lxc.include = /var/lib/lxc/{{ opensearch_container_name }}/eth0.ini
+      lxc.include = /var/lib/lxc/{{ opensearch_container_name }}/eth1.ini
+
+- name: Create systemd-networkd directory inside container rootfs
+  ansible.builtin.file:
+    path: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/systemd/network"
+    state: directory
+    mode: "0755"
+
+- name: Configure static management IP in container networkd (eth0)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/systemd/network/eth0.network"
+    content: |
+      [Match]
+      Name = eth0
+
+      [Network]
+      Address = {{ opensearch_container_ip }}/22
+
+      [Link]
+    mode: "0644"
+
+- name: Configure DHCP NAT IP in container networkd (eth1)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/systemd/network/eth1.network"
+    content: |
+      [Match]
+      Name = eth1
+
+      [DHCP]
+      UseDNS = yes
+      UseNTP = yes
+      RouteMetric = 20
+
+      [Network]
+      DHCP = yes
+
+      [Link]
+    mode: "0644"
+
+- name: Ensure OpenSearch LXC container is running
+  ansible.builtin.command:
+    cmd: "lxc-start -n {{ opensearch_container_name }}"
+  register: start_res
+  changed_when: start_res.rc == 0
+  failed_when: false
+
+- name: Reload container networkd and apply static IP
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ opensearch_container_name }} -- bash -c
+      "systemctl enable systemd-networkd && systemctl restart systemd-networkd && networkctl reload && ip addr add {{ opensearch_container_ip }}/22 dev eth0 2>/dev/null || true"
+  changed_when: false
+
+- name: Check if OpenSearch package is installed inside container
+  ansible.builtin.command:
+    cmd: "lxc-attach -n {{ opensearch_container_name }} -- dpkg -s opensearch"
+  register: opensearch_pkg_check
+  changed_when: false
+  failed_when: false
+
+- name: Install OpenSearch and Dashboards packages inside container
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ opensearch_container_name }} -- bash -c
+      "apt-get update -qq && apt-get install -y -qq curl gnupg2 apt-transport-https &&
+       curl -fsSL {{ opensearch_repo_gpg_url }} | gpg --dearmor -o /usr/share/keyrings/opensearch-keyring.gpg &&
+       echo 'deb [signed-by=/usr/share/keyrings/opensearch-keyring.gpg] {{ opensearch_repo_url }} stable main' > /etc/apt/sources.list.d/opensearch-2.x.list &&
+       echo 'deb [signed-by=/usr/share/keyrings/opensearch-keyring.gpg] {{ opensearch_dashboards_repo_url }} stable main' > /etc/apt/sources.list.d/opensearch-dashboards-2.x.list &&
+       apt-get update -qq &&
+       OPENSEARCH_INITIAL_ADMIN_PASSWORD='{{ opensearch_admin_password }}' apt-get install -y -qq opensearch opensearch-dashboards"
+  when: opensearch_pkg_check.rc != 0
+
+- name: Template OpenSearch configuration file
+  ansible.builtin.template:
+    src: opensearch.yml.j2
+    dest: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/opensearch/opensearch.yml"
+    mode: "0640"
+
+- name: Configure OpenSearch JVM heap limits
+  ansible.builtin.lineinfile:
+    path: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/opensearch/jvm.options"
+    regexp: "^-Xms"
+    line: "-Xms{{ opensearch_jvm_min_heap }}"
+
+- name: Configure OpenSearch JVM max heap limits
+  ansible.builtin.lineinfile:
+    path: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/opensearch/jvm.options"
+    regexp: "^-Xmx"
+    line: "-Xmx{{ opensearch_jvm_max_heap }}"
+
+- name: Template OpenSearch Dashboards configuration file
+  ansible.builtin.template:
+    src: opensearch_dashboards.yml.j2
+    dest: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/etc/opensearch-dashboards/opensearch_dashboards.yml"
+    mode: "0640"
+
+- name: Remove Dashboards security plugin to allow seamless UI access
+  ansible.builtin.file:
+    path: "/var/lib/lxc/{{ opensearch_container_name }}/rootfs/usr/share/opensearch-dashboards/plugins/securityDashboards"
+    state: absent
+
+- name: Enable and restart OpenSearch services
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ opensearch_container_name }} -- bash -c
+      "systemctl daemon-reload && systemctl enable opensearch opensearch-dashboards && systemctl restart opensearch opensearch-dashboards"
+  changed_when: true
+
+- name: Wait for OpenSearch REST API to become ready
+  ansible.builtin.uri:
+    url: "http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}/"
+    status_code: 200
+  register: os_api_status
+  until: os_api_status.status == 200
+  retries: 15
+  delay: 3
+
+- name: Configure HAProxy frontend and backend for OpenSearch Dashboards (Port 5601)
+  ansible.builtin.blockinfile:
+    path: /etc/haproxy/haproxy.cfg
+    marker: "# {mark} ANSIBLE MANAGED OPENSEARCH DASHBOARDS PROXY"
+    block: |
+      frontend opensearch_dashboards-front-1
+          bind {{ openstack_public_ip }}:{{ opensearch_dashboards_port }} ssl crt /etc/haproxy/ssl/haproxy_ogi-openstack-2-{{ openstack_public_ip }}.pem alpn h2,http/1.1
+          option httplog
+          option forwardfor except 127.0.0.0/8
+          http-request add-header X-Forwarded-Proto https
+          mode http
+          default_backend opensearch_dashboards-back
+
+      frontend opensearch_dashboards-front-2
+          bind {{ openstack_management_vip }}:{{ opensearch_dashboards_port }}
+          option httplog
+          option forwardfor except 127.0.0.0/8
+          mode http
+          default_backend opensearch_dashboards-back
+
+      backend opensearch_dashboards-back
+          mode http
+          balance leastconn
+          option forwardfor
+          option httpchk GET /
+          http-check expect status 302
+          server {{ opensearch_container_name }} {{ opensearch_container_ip }}:{{ opensearch_dashboards_port }} check port {{ opensearch_dashboards_port }} inter 12000 rise 3 fall 3
+
+- name: Reload HAProxy load balancer
+  ansible.builtin.service:
+    name: haproxy
+    state: reloaded

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Safir Bulut - Haftalik Kapasite Raporu</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #eef1f5; font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+
+<!-- Wrapper -->
+<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background-color: #eef1f5;">
+<tr><td align="center" style="padding: 30px 10px;">
+
+<!-- Main Container -->
+<table role="presentation" cellpadding="0" cellspacing="0" width="800" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.08);">
+
+    <!-- Header -->
+    <tr>
+        <td style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); padding: 22px 50px; text-align: center;">
+            <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Haftalik Kapasite Raporu</h1>
+            <p style="margin: 6px 0 0; color: rgba(255,255,255,0.6); font-size: 12px; font-weight: 400;">Safir Bulut Izleme Servisi</p>
+        </td>
+    </tr>
+
+    <!-- Date Range Banner -->
+    <tr>
+        <td style="background-color: #f8fafc; padding: 14px 50px; border-bottom: 1px solid #e8ecf1;">
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%">
+                <tr>
+                    <td style="font-size: 13px; color: #64748b;">
+                        Rapor Donemi: <strong style="color: #1e293b;">{{ start_date }} &mdash; {{ end_date }}</strong>
+                    </td>
+                    <td align="right" style="font-size: 11px; color: #94a3b8;">
+                        Otomatik olusturulmustur
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+
+    <!-- Content -->
+    <tr>
+        <td style="padding: 32px 50px;">
+
+            <!-- ============================================ -->
+            <!-- VM SUMMARY CARDS (En ust) -->
+            <!-- ============================================ -->
+            <h2 style="margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #1e293b; border-left: 4px solid #10b981; padding-left: 14px;">
+                Sanal Makine Ozeti
+            </h2>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px;">
+                <tr>
+                    <td width="25%" align="center" style="padding: 4px;">
+                        <div style="background: #f1f5f9; border-radius: 10px; padding: 18px 10px; border: 1px solid #e2e8f0;">
+                            <div style="font-size: 30px; font-weight: 800; color: #1e293b; line-height: 1;">{{ rightsizing.total }}</div>
+                            <div style="font-size: 10px; color: #64748b; margin-top: 8px; line-height: 1.3;">Toplam<br>Sanal Makine</div>
+                        </div>
+                    </td>
+                    <td width="25%" align="center" style="padding: 4px;">
+                        <div style="background: #fffbeb; border-radius: 10px; padding: 18px 10px; border: 1px solid #fde68a;">
+                            <div style="font-size: 30px; font-weight: 800; color: #d97706; line-height: 1;">{{ rightsizing.idle | length }}</div>
+                            <div style="font-size: 10px; color: #92400e; margin-top: 8px; line-height: 1.3;">Atil Olabilecek<br>Makine</div>
+                        </div>
+                    </td>
+                    <td width="25%" align="center" style="padding: 4px;">
+                        <div style="background: #fef2f2; border-radius: 10px; padding: 18px 10px; border: 1px solid #fecaca;">
+                            <div style="font-size: 30px; font-weight: 800; color: #dc2626; line-height: 1;">{{ rightsizing.over_provisioned | length }}</div>
+                            <div style="font-size: 10px; color: #991b1b; margin-top: 8px; line-height: 1.3;">Kaynagi Fazla<br>Atanmis Makine</div>
+                        </div>
+                    </td>
+                    <td width="25%" align="center" style="padding: 4px;">
+                        <div style="background: #faf5ff; border-radius: 10px; padding: 18px 10px; border: 1px solid #e9d5ff;">
+                            <div style="font-size: 30px; font-weight: 800; color: #7c3aed; line-height: 1;">{{ rightsizing.under_provisioned | length }}</div>
+                            <div style="font-size: 10px; color: #5b21b6; margin-top: 8px; line-height: 1.3;">Kaynagi Az<br>Atanmis Makine</div>
+                        </div>
+                    </td>
+                </tr>
+            </table>
+
+            <!-- ============================================ -->
+            <!-- HOST METRICS TABLE -->
+            <!-- ============================================ -->
+            <h2 style="margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #1e293b; border-left: 4px solid #3b82f6; padding-left: 14px;">
+                Fiziksel Host Kaynak Kullanimi
+            </h2>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+                <thead>
+                    <tr>
+                        <th style="background: #1e293b; color: #fff; padding: 10px 14px; font-size: 11px; font-weight: 600; text-align: left;">Host</th>
+                        <th style="background: #1e293b; color: #e2e8f0; padding: 10px 8px; font-size: 11px; font-weight: 600; text-align: center;" colspan="3">CPU</th>
+                        <th style="background: #1e293b; color: #e2e8f0; padding: 10px 8px; font-size: 11px; font-weight: 600; text-align: center;" colspan="3">Memory</th>
+                        <th style="background: #1e293b; color: #e2e8f0; padding: 10px 8px; font-size: 11px; font-weight: 600; text-align: center;" colspan="3">Disk</th>
+                    </tr>
+                    <tr style="background: #334155;">
+                        <th style="padding: 6px 14px;"></th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Ort</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Maks</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Min</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Ort</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Maks</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Min</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Ort</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Maks</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Min</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in host_summary %}
+                    {% set high_cpu = h.cpu_avg and h.cpu_avg > 80 %}
+                    {% set high_mem = h.memory_avg and h.memory_avg > 80 %}
+                    {% set high_disk = h.disk_avg and h.disk_avg > 80 %}
+                    <tr style="background: {{ '#ffffff' if loop.index is odd else '#f0f4f8' }};">
+                        <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #1e293b; border-bottom: 1px solid #e2e8f0;">{{ h.nodename }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_cpu else 'color: #475569;' }}">{{ h.cpu_avg }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_cpu else 'color: #475569;' }}">{{ h.cpu_max }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_cpu else 'color: #475569;' }}">{{ h.cpu_min }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_mem else 'color: #475569;' }}">{{ h.memory_avg }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_mem else 'color: #475569;' }}">{{ h.memory_max }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_mem else 'color: #475569;' }}">{{ h.memory_min }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_disk else 'color: #475569;' }}">{{ h.disk_avg }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_disk else 'color: #475569;' }}">{{ h.disk_max }}%</td>
+                        <td style="padding: 10px 8px; font-size: 13px; text-align: center; border-bottom: 1px solid #e2e8f0; {{ 'color: #dc2626; font-weight: 700;' if high_disk else 'color: #475569;' }}">{{ h.disk_min }}%</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <!-- ============================================ -->
+            <!-- PLACEMENT TABLE -->
+            <!-- ============================================ -->
+            {% if placement_summary %}
+            <h2 style="margin: 0 0 16px; font-size: 16px; font-weight: 700; color: #1e293b; border-left: 4px solid #8b5cf6; padding-left: 14px;">
+                Compute Host Kaynak Tahsisi
+            </h2>
+            <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="margin-bottom: 32px; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0;">
+                <thead>
+                    <tr>
+                        <th style="background: #1e293b; color: #fff; padding: 10px 14px; font-size: 11px; font-weight: 600; text-align: left;">Host</th>
+                        <th style="background: #1e293b; color: #94a3b8; padding: 10px 8px; font-size: 11px; font-weight: 600; text-align: center;" colspan="2">vCPU</th>
+                        <th style="background: #1e293b; color: #94a3b8; padding: 10px 8px; font-size: 11px; font-weight: 600; text-align: center;" colspan="2">Memory (GB)</th>
+                        <th style="background: #1e293b; color: #94a3b8; padding: 10px 8px; font-size: 11px; font-weight: 600; text-align: center;" colspan="2">Disk (GB)</th>
+                    </tr>
+                    <tr style="background: #334155;">
+                        <th style="padding: 6px 14px;"></th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Kullanilan</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Toplam</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Kullanilan</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Toplam</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Kullanilan</th>
+                        <th style="padding: 6px 8px; font-size: 10px; color: #cbd5e1; text-align: center;">Toplam</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in placement_summary %}
+                    <tr style="background: {{ '#ffffff' if loop.index is odd else '#f8fafc' }};">
+                        <td style="padding: 10px 14px; font-size: 13px; font-weight: 600; color: #1e293b; border-bottom: 1px solid #f1f5f9;">{{ p.nodename }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; color: #475569; text-align: center; border-bottom: 1px solid #f1f5f9; font-weight: 600;">{{ p.vcpu_used }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; color: #94a3b8; text-align: center; border-bottom: 1px solid #f1f5f9;">{{ p.vcpu_total }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; color: #475569; text-align: center; border-bottom: 1px solid #f1f5f9; font-weight: 600;">{{ p.memory_used_gb }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; color: #94a3b8; text-align: center; border-bottom: 1px solid #f1f5f9;">{{ p.memory_total_gb }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; color: #475569; text-align: center; border-bottom: 1px solid #f1f5f9; font-weight: 600;">{{ p.disk_used_gb }}</td>
+                        <td style="padding: 10px 8px; font-size: 13px; color: #94a3b8; text-align: center; border-bottom: 1px solid #f1f5f9;">{{ p.disk_total_gb }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            {% endif %}
+
+            <!-- Info Note -->
+            <div style="margin-top: 24px; padding: 14px 18px; background: #f0f9ff; border-radius: 8px; border-left: 4px solid #0ea5e9;">
+                <p style="margin: 0; font-size: 12px; color: #0369a1; line-height: 1.6;">
+                    Detayli veriler ekteki Excel dosyasinda mevcuttur. Bu rapor Safir Bulut Izleme Servisi tarafindan otomatik olarak olusturulmustur.
+                </p>
+            </div>
+
+        </td>
+    </tr>
+
+    <!-- Footer -->
+    <tr>
+        <td style="background: #1e293b; padding: 22px 50px; text-align: center;">
+            <p style="margin: 0 0 4px; font-size: 12px; color: #94a3b8;">Safir Bulut Izleme Servisi</p>
+            <p style="margin: 0; font-size: 10px; color: #475569;">TUBITAK BILGEM &bull; B3LAB</p>
+        </td>
+    </tr>
+
+</table>
+<!-- /Main Container -->
+
+</td></tr>
+</table>
+<!-- /Wrapper -->
+
+</body>
+</html>

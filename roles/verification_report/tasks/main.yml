@@ -1,0 +1,91 @@
+---
+# ==============================================================================
+# End-to-End System Smoke Test & Verification Report Tasks
+# ==============================================================================
+
+- name: Smoke Test | Verify OpenSearch REST API (Port 9200)
+  ansible.builtin.uri:
+    url: "http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}/"
+    status_code: 200
+  register: check_opensearch
+
+- name: Smoke Test | Verify OpenSearch Dashboards VIP (Port 5601)
+  ansible.builtin.uri:
+    url: "http://{{ openstack_management_vip }}:{{ opensearch_dashboards_port }}/"
+    status_code: [200, 302]
+    follow_redirects: none
+  register: check_dashboards
+
+- name: Smoke Test | Verify SafirCloudWatcher API VIP (Port 8839)
+  ansible.builtin.uri:
+    url: "http://{{ openstack_management_vip }}:{{ safircloudwatcher_api_port }}/"
+    status_code: 200
+  register: check_scw
+
+- name: Smoke Test | Verify SafirMonitoring Swagger API VIP (Port 9739)
+  ansible.builtin.uri:
+    url: "http://{{ openstack_management_vip }}:{{ safircloudwatcher_api_port }}/"
+    status_code: 200
+  register: check_sm
+
+- name: Smoke Test | Verify Grafana Web Panel VIP (Port 3000)
+  ansible.builtin.uri:
+    url: "http://{{ openstack_management_vip }}:{{ grafana_backend_port }}/api/health"
+    status_code: 200
+  register: check_grafana
+
+- name: Smoke Test | Verify Skyline Dashboard Web Console (Port 9999)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ skyline_web_port }}/"
+    status_code: 200
+  register: check_skyline
+
+- name: Smoke Test | Verify Prometheus Libvirt Exporter Metrics (Port 9177)
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ libvirt_exporter_port }}/metrics"
+    status_code: 200
+  register: check_libvirt_exporter
+
+- name: Live CADF Event Trigger | Create and delete test security group via Utility container
+  vars:
+    utility_ct: "{{ lxc_list.stdout_lines | select('search', 'utility-container') | first }}"
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ utility_ct }} -- bash -c
+      "source /root/openrc && openstack security group create test-aio-verify >/dev/null && openstack security group delete test-aio-verify"
+  changed_when: true
+
+- name: Wait for SafirCloudWatcher to ingest event into OpenSearch
+  ansible.builtin.pause:
+    seconds: 4
+
+- name: OpenSearch Index Verification | Query events-* and audit_events-* indices
+  ansible.builtin.uri:
+    url: "http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}/_cat/indices?v"
+    return_content: true
+  register: opensearch_indices
+
+- name: Display Final Verification Summary Banner
+  ansible.builtin.debug:
+    msg: |
+      ==============================================================================
+                    SAFIR ALL-IN-ONE DEPLOYMENT COMPLETED SUCCESSFULLY!
+      ==============================================================================
+      [SERVICE ENDPOINTS]
+      * Skyline Modern Web Console: https://{{ openstack_public_ip }}:{{ skyline_web_port }}/ (Port: {{ skyline_web_port }})
+      * Libvirt Exporter (Metrics): http://{{ openstack_public_ip }}:{{ libvirt_exporter_port }}/metrics
+      * OpenSearch Dashboards:      https://{{ openstack_public_ip }}:{{ opensearch_dashboards_port }}/ (VIP: http://{{ openstack_management_vip }}:{{ opensearch_dashboards_port }})
+      * Grafana Web UI:             https://{{ openstack_public_ip }}:{{ grafana_backend_port }}/ (VIP: http://{{ openstack_management_vip }}:{{ grafana_backend_port }})
+      * SafirMonitoring API:        https://{{ openstack_public_ip }}:{{ safirmonitoring_api_port }}/docs
+      * SafirCloudWatcher API:      https://{{ openstack_public_ip }}:{{ safircloudwatcher_api_port }}/
+      * OpenSearch REST API:        http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}/
+      
+      [DEFAULT CREDENTIALS]
+      * Skyline Dashboard:          admin / {{ openstack_admin_password }} (Domain: Default)
+      * OpenSearch Admin:           admin / {{ opensearch_admin_password }}
+      * Grafana Admin:              admin / {{ grafana_admin_password }}
+      * OpenStack Admin:            admin / {{ openstack_admin_password }}
+      
+      [OPENSEARCH INDICES STATUS]
+      {{ opensearch_indices.content }}
+      ==============================================================================

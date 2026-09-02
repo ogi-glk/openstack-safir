@@ -1,0 +1,10 @@
+---
+# ==============================================================================
+# Grafana Stack Role - Default Variables
+# ==============================================================================
+
+grafana_mac_eth0: "00:16:3e:0e:30:01"
+grafana_mac_eth1: "00:16:3e:0e:30:02"
+
+grafana_repo_gpg_url: "https://apt.grafana.com/gpg.key"
+grafana_repo_url: "https://apt.grafana.com"

@@ -1,0 +1,44 @@
+{
+  "id": null,
+  "uid": "openstack-overview",
+  "title": "OpenStack Genel Bakis ve Sanal Makineler",
+  "tags": ["openstack", "safir"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "10s",
+  "panels": [
+    {
+      "id": 1,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "type": "timeseries",
+      "title": "Host CPU Kullanimi (%)",
+      "datasource": {"type": "prometheus", "uid": "Thanos-Prometheus"},
+      "targets": [{"expr": "100 - (avg by (instance) (rate(node_cpu_seconds_total{mode=\"idle\"}[1m])) * 100)", "legendFormat": "{{instance}} CPU"}]
+    },
+    {
+      "id": 2,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "type": "timeseries",
+      "title": "Host RAM Kullanimi (%)",
+      "datasource": {"type": "prometheus", "uid": "Thanos-Prometheus"},
+      "targets": [{"expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100", "legendFormat": "{{instance}} RAM"}]
+    },
+    {
+      "id": 3,
+      "gridPos": {"h": 6, "w": 12, "x": 0, "y": 8},
+      "type": "stat",
+      "title": "Toplam Sanal Makine Sayisi",
+      "datasource": {"type": "prometheus", "uid": "Thanos-Prometheus"},
+      "targets": [{"expr": "count(libvirt_domain_info_state) or vector(0)", "legendFormat": "Aktif VM"}]
+    },
+    {
+      "id": 4,
+      "gridPos": {"h": 6, "w": 12, "x": 12, "y": 8},
+      "type": "timeseries",
+      "title": "Ag Trafigi (Gelen Byte/sn)",
+      "datasource": {"type": "prometheus", "uid": "Thanos-Prometheus"},
+      "targets": [{"expr": "sum by (instance) (rate(node_network_receive_bytes_total[1m]))", "legendFormat": "{{instance}}"}]
+    }
+  ]
+}

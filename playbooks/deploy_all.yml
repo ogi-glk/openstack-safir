@@ -1,0 +1,59 @@
+---
+# ==============================================================================
+# OpenStack Safir All-in-One Master Orchestration Playbook
+# ==============================================================================
+
+- name: Phase 1 - OpenStack AIO Environment Pre-flight Validation
+  hosts: openstack_host
+  gather_facts: true
+  roles:
+    - role: prerequisites_check
+
+- name: Phase 2 - OpenSearch & OpenSearch Dashboards Deployment
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: opensearch_stack
+
+- name: Phase 3 - OpenStack Core Services CADF Audit Middleware Configuration
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: cadf_audit_middleware
+
+- name: Phase 4 - SafirCloudWatcher Notification Consumer & OpenSearch Integration
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: safir_cloud_watcher
+
+- name: Phase 5 - SafirMonitoring API, ML Engine & Metric Querier Integration
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: safir_monitoring
+
+- name: Phase 6 - Grafana OSS & Keystone Auth Proxy Deployment
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: grafana_stack
+
+- name: Phase 7 - OpenStack Skyline Modern Dashboard Deployment
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: skyline_dashboard
+
+- name: Phase 8 - Prometheus Libvirt Exporter (Hypervisor & VM Metrics)
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: libvirt_exporter
+
+- name: Phase 9 - End-to-End Smoke Testing & Health Status Verification
+  hosts: openstack_host
+  gather_facts: false
+  roles:
+    - role: verification_report
+

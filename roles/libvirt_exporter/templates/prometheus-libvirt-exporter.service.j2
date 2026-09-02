@@ -1,0 +1,17 @@
+﻿[Unit]
+Description=Prometheus Libvirt Exporter (VM vCPU, Memory & Disk Metrics)
+Documentation=https://github.com/b3lab/prometheus-libvirt-exporter
+After=network-online.target libvirtd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ libvirt_exporter_user }}
+Group={{ libvirt_exporter_group }}
+ExecStart={{ libvirt_exporter_binary_path }} --web.listen-address "{{ libvirt_exporter_listen_address }}" --libvirt.uri "{{ libvirt_exporter_uri }}"
+Restart=always
+RestartSec=5s
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

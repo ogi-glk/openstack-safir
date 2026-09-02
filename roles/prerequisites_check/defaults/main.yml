@@ -1,0 +1,18 @@
+---
+# ==============================================================================
+# Prerequisites Check Role - Default Variables
+# ==============================================================================
+
+prerequisites_fail_on_missing_services: true
+prerequisites_required_bridges:
+  - "{{ openstack_management_bridge }}"
+  - "{{ openstack_nat_bridge }}"
+
+prerequisites_required_containers:
+  - "nova"
+  - "cinder"
+  - "glance"
+  - "neutron"
+  - "keystone"
+  - "galera"
+  - "rabbit"

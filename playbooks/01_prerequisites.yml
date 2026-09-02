@@ -1,0 +1,6 @@
+---
+- name: Validate OpenStack All-in-One Prerequisites
+  hosts: openstack_host
+  gather_facts: true
+  roles:
+    - role: prerequisites_check

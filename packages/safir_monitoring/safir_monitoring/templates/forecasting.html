@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Safir Monitoring - Kapasite Tahminleme</title>
+  <link rel="stylesheet" href="https://unpkg.com/antd@4.24.16/dist/antd.min.css">
+  <script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/moment@2.29.4/moment.js"></script>
+  <script src="https://unpkg.com/antd@4.24.16/dist/antd.min.js"></script>
+  <script src="https://unpkg.com/@ant-design/charts@1.4.3/dist/charts.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background: #f0f2f5; margin: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .site-layout { padding: 24px; min-height: 100vh; }
+    .logo { color: #fff; font-size: 18px; font-weight: bold; padding: 16px 24px; }
+    .prediction-card { margin-bottom: 16px; }
+    .status-stable { color: #52c41a; }
+    .status-warning { color: #faad14; }
+    .status-healthy { color: #1890ff; }
+    .status-no_data { color: #d9d9d9; }
+    .stat-value { font-size: 28px; font-weight: bold; }
+    .stat-label { color: #8c8c8c; font-size: 13px; }
+    .capacity-progress .ant-progress-text { font-size: 14px !important; }
+    .trend-chart-container { height: 400px; }
+    .filter-bar { background: #fff; padding: 16px 24px; margin-bottom: 16px; border-radius: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { Layout, Menu, Card, Row, Col, Select, InputNumber, Button, Spin, Alert, Progress, Tag, Statistic, Descriptions, Tabs, Space, Typography, Divider, Radio, Empty } = antd;
+    const { Header, Content, Sider } = Layout;
+    const { Option } = Select;
+    const { Title, Text } = Typography;
+    const { TabPane } = Tabs;
+    const { Line, DualAxes } = Charts;
+
+    // ========================================================================
+    // CONFIG
+    // ========================================================================
+    const API_BASE = '/api/v1/metrics/forecasts';
+    const AUTH_TOKEN = localStorage.getItem('safir_auth_token') || '';
+
+    // ========================================================================
+    // API HELPER
+    // ========================================================================
+    async function apiFetch(endpoint, params = {}) {
+      const url = new URL(API_BASE + endpoint, window.location.origin);
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== null && v !== undefined && v !== '') url.searchParams.set(k, v);
+      });
+      const res = await fetch(url.toString(), {
+        headers: { 'X-Auth-Token': AUTH_TOKEN, 'Accept': 'application/json' }
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    // ========================================================================
+    // STATUS BADGE
+    // ========================================================================
+    function StatusTag({ status }) {
+      const map = {
+        stable:  { color: 'green',   text: 'Stabil' },
+        warning: { color: 'orange',  text: 'Uyarı' },
+        healthy: { color: 'blue',    text: 'Sağlıklı' },
+        no_data: { color: 'default', text: 'Veri Yok' },
+        error:   { color: 'red',     text: 'Hata' },
+      };
+      const info = map[status] || map.no_data;
+      return <Tag color={info.color}>{info.text}</Tag>;
+    }
+
+    // ========================================================================
+    // PREDICTION CARD
+    // ========================================================================
+    function PredictionCard({ data, title }) {
+      if (!data) return null;
+      const usagePct = data.usage_percentage || 0;
+      const progressColor = usagePct > 80 ? '#ff4d4f' : usagePct > 60 ? '#faad14' : '#52c41a';
+
+      return (
+        <Card title={title} extra={<StatusTag status={data.status} />} className="prediction-card">
+          <Row gutter={[24, 16]}>
+            <Col span={6}>
+              <div style={{ textAlign: 'center' }}>
+                <Progress
+                  type="dashboard"
+                  percent={Math.min(usagePct, 100)}
+                  strokeColor={progressColor}
+                  format={() => `${usagePct.toFixed(1)}%`}
+                  className="capacity-progress"
+                  width={120}
+                />
+                <div className="stat-label" style={{ marginTop: 8 }}>Kullanım Oranı</div>
+              </div>
+            </Col>
+            <Col span={18}>
+              <Descriptions column={3} size="small" bordered>
+                <Descriptions.Item label="Mevcut Kullanım">
+                  <Text strong>{typeof data.current_usage === 'number' ? data.current_usage.toFixed(2) : data.current_usage}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Toplam Kapasite">
+                  <Text strong>{typeof data.total_capacity === 'number' ? data.total_capacity.toFixed(2) : data.total_capacity}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Günlük Büyüme">
+                  <Text strong style={{ color: data.daily_growth > 0 ? '#ff4d4f' : '#52c41a' }}>
+                    {data.daily_growth > 0 ? '+' : ''}{typeof data.daily_growth === 'number' ? data.daily_growth.toFixed(4) : data.daily_growth}
+                  </Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Kapasite Doluluk Tarihi">
+                  <Text>{typeof data.capacity_full_date === 'string' && data.capacity_full_date.includes('T')
+                    ? new Date(data.capacity_full_date).toLocaleDateString('tr-TR')
+                    : data.capacity_full_date}</Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Kalan Gün">
+                  <Text strong style={{ fontSize: 16 }}>
+                    {typeof data.days_remaining === 'number' ? data.days_remaining : data.days_remaining}
+                  </Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Algoritma">
+                  <Tag color="purple">{data.prediction_method || 'N/A'}</Tag>
+                </Descriptions.Item>
+                {data.worst_case && (
+                  <Descriptions.Item label="En Kötü Senaryo" span={3}>
+                    <Text type="secondary">
+                      Doluluk: {typeof data.worst_case.capacity_full_date === 'string' && data.worst_case.capacity_full_date.includes('T')
+                        ? new Date(data.worst_case.capacity_full_date).toLocaleDateString('tr-TR')
+                        : data.worst_case.capacity_full_date}
+                      {' | '}Kalan: {data.worst_case.days_remaining} gün
+                    </Text>
+                  </Descriptions.Item>
+                )}
+                {data.confidence && (
+                  <Descriptions.Item label="Güven Aralığı" span={3}>
+                    <Text type="secondary">Alt: {data.confidence.lower} — Üst: {data.confidence.upper}</Text>
+                  </Descriptions.Item>
+                )}
+              </Descriptions>
+            </Col>
+          </Row>
+        </Card>
+      );
+    }
+
+    // ========================================================================
+    // TREND CHART
+    // ========================================================================
+    function TrendChart({ data }) {
+      if (!data || !data.data_points) return <Empty description="Trend verisi yok" />;
+
+      const chartData = [
+        ...data.data_points.map(p => ([
+          { date: p.date.split('T')[0], value: p.actual_value, type: 'Gerçek Değer' },
+          { date: p.date.split('T')[0], value: p.trend_value, type: 'Trend' },
+          { date: p.date.split('T')[0], value: p.yhat_upper, type: 'Üst Sınır' },
+          { date: p.date.split('T')[0], value: p.yhat_lower, type: 'Alt Sınır' },
+        ])).flat(),
+        ...data.future_predictions.map(p => ([
+          { date: p.date.split('T')[0], value: p.predicted_value, type: 'Tahmin' },
+          { date: p.date.split('T')[0], value: p.upper_bound, type: 'Üst Sınır' },
+          { date: p.date.split('T')[0], value: p.lower_bound, type: 'Alt Sınır' },
+        ])).flat(),
+      ];
+
+      const config = {
+        data: chartData,
+        xField: 'date',
+        yField: 'value',
+        seriesField: 'type',
+        smooth: true,
+        color: ['#1890ff', '#ff7a45', '#ff4d4f', '#52c41a', '#722ed1'],
+        lineStyle: (datum) => {
+          if (datum.type === 'Üst Sınır' || datum.type === 'Alt Sınır') {
+            return { lineDash: [4, 4], opacity: 0.5 };
+          }
+          if (datum.type === 'Tahmin') {
+            return { lineDash: [6, 3] };
+          }
+          return {};
+        },
+        legend: { position: 'top' },
+        xAxis: { label: { autoRotate: true, formatter: (v) => v } },
+        yAxis: { title: { text: data.resource_type ? data.resource_type.toUpperCase() : '' } },
+        annotations: data.capacity_line ? [{
+          type: 'line',
+          start: ['min', data.capacity_line.value],
+          end: ['max', data.capacity_line.value],
+          style: { stroke: '#ff4d4f', lineDash: [8, 4], lineWidth: 2 },
+          text: { content: data.capacity_line.label, position: 'end', style: { fill: '#ff4d4f', fontSize: 11 } },
+        }] : [],
+        tooltip: { shared: true },
+      };
+
+      return (
+        <div className="trend-chart-container">
+          <Line {...config} />
+        </div>
+      );
+    }
+
+    // ========================================================================
+    // SYSTEM REPORT CARD
+    // ========================================================================
+    function SystemReportCard({ data }) {
+      if (!data || !data.report) return null;
+
+      const resourceNames = { cpu: 'CPU', memory: 'Bellek', disk: 'Disk' };
+      const resourceIcons = { cpu: '🖥️', memory: '💾', disk: '💿' };
+
+      return (
+        <Row gutter={[16, 16]}>
+          {Object.entries(data.report).map(([key, val]) => (
+            <Col span={8} key={key}>
+              <Card
+                title={<span>{resourceIcons[key]} {resourceNames[key]}</span>}
+                extra={<StatusTag status={val.status} />}
+                size="small"
+              >
+                <Statistic title="Kullanım %" value={val.usage_percentage} precision={1} suffix="%" />
+                <Divider style={{ margin: '8px 0' }} />
+                <Descriptions column={1} size="small">
+                  <Descriptions.Item label="Mevcut">{typeof val.current_usage === 'number' ? val.current_usage.toFixed(2) : val.current_usage}</Descriptions.Item>
+                  <Descriptions.Item label="Kapasite">{typeof val.total_capacity === 'number' ? val.total_capacity.toFixed(2) : val.total_capacity}</Descriptions.Item>
+                  <Descriptions.Item label="Günlük Büyüme">{typeof val.daily_growth === 'number' ? val.daily_growth.toFixed(4) : val.daily_growth}</Descriptions.Item>
+                  <Descriptions.Item label="Doluluk Tarihi">
+                    {typeof val.capacity_full_date === 'string' && val.capacity_full_date.includes('T')
+                      ? new Date(val.capacity_full_date).toLocaleDateString('tr-TR')
+                      : val.capacity_full_date}
+                  </Descriptions.Item>
+                </Descriptions>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      );
+    }
+
+    // ========================================================================
+    // MAIN APP
+    // ========================================================================
+    function App() {
+      const [activeTab, setActiveTab] = React.useState('prediction');
+      const [loading, setLoading] = React.useState(false);
+      const [error, setError] = React.useState(null);
+      const [result, setResult] = React.useState(null);
+      const [trendData, setTrendData] = React.useState(null);
+
+      // Filtreler
+      const [resourceType, setResourceType] = React.useState('cpu');
+      const [dimension, setDimension] = React.useState('');
+      const [periodDays, setPeriodDays] = React.useState(90);
+      const [scope, setScope] = React.useState('host');
+      const [metricSource, setMetricSource] = React.useState('real');
+      const [algorithm, setAlgorithm] = React.useState('prophet');
+      const [authToken, setAuthToken] = React.useState(AUTH_TOKEN);
+
+      // Token kaydet
+      React.useEffect(() => {
+        if (authToken) localStorage.setItem('safir_auth_token', authToken);
+      }, [authToken]);
+
+      const fetchPrediction = async () => {
+        setLoading(true); setError(null); setResult(null); setTrendData(null);
+        try {
+          const params = { resource_type: resourceType, period_days: periodDays, metric_source: metricSource, algorithm };
+          if (dimension) params.dimension = dimension;
+          if (scope) params.scope = scope;
+
+          const data = await apiFetch('/prediction', params);
+          setResult(data);
+
+          // Trend graph da cek
+          try {
+            const trend = await apiFetch('/trend-graph', params);
+            setTrendData(trend);
+          } catch (e) { console.warn('Trend graph yuklenemedi:', e); }
+        } catch (e) { setError(e.message); }
+        setLoading(false);
+      };
+
+      const fetchSystemPrediction = async () => {
+        setLoading(true); setError(null); setResult(null); setTrendData(null);
+        try {
+          const params = { resource_type: resourceType, period_days: periodDays, metric_source: metricSource, algorithm };
+          const data = await apiFetch('/prediction/system', params);
+          setResult(data);
+
+          try {
+            const trend = await apiFetch('/trend-graph/system', params);
+            setTrendData(trend);
+          } catch (e) { console.warn('System trend yuklenemedi:', e); }
+        } catch (e) { setError(e.message); }
+        setLoading(false);
+      };
+
+      const fetchSystemReport = async () => {
+        setLoading(true); setError(null); setResult(null); setTrendData(null);
+        try {
+          const params = { period_days: periodDays, metric_source: metricSource, algorithm };
+          const data = await apiFetch('/prediction/system/report', params);
+          setResult(data);
+        } catch (e) { setError(e.message); }
+        setLoading(false);
+      };
+
+      const handleRun = () => {
+        if (activeTab === 'prediction') fetchPrediction();
+        else if (activeTab === 'system') fetchSystemPrediction();
+        else if (activeTab === 'report') fetchSystemReport();
+      };
+
+      return (
+        <Layout style={{ minHeight: '100vh' }}>
+          <Header style={{ display: 'flex', alignItems: 'center', padding: '0 24px' }}>
+            <div className="logo">Safir Monitoring — Kapasite Tahminleme</div>
+          </Header>
+
+          <Content className="site-layout">
+            {/* Auth Token */}
+            {!authToken && (
+              <Alert
+                type="warning"
+                message="X-Auth-Token gerekli"
+                description={
+                  <Space>
+                    <input
+                      placeholder="Token yapıştırın..."
+                      style={{ width: 400, padding: '4px 8px' }}
+                      onChange={e => setAuthToken(e.target.value)}
+                    />
+                  </Space>
+                }
+                style={{ marginBottom: 16 }}
+                showIcon
+              />
+            )}
+
+            {/* Tab Secimi */}
+            <Tabs activeKey={activeTab} onChange={setActiveTab} style={{ marginBottom: 0 }}>
+              <TabPane tab="🖥️ Host / VM Tahmin" key="prediction" />
+              <TabPane tab="🌐 Sistem Tahmini" key="system" />
+              <TabPane tab="📊 Sistem Raporu" key="report" />
+            </Tabs>
+
+            {/* Filtre Bar */}
+            <div className="filter-bar">
+              <Row gutter={[12, 12]} align="middle">
+                <Col>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Kaynak</Text><br/>
+                  <Select value={resourceType} onChange={setResourceType} style={{ width: 120 }}>
+                    <Option value="cpu">CPU</Option>
+                    <Option value="memory">Bellek</Option>
+                    <Option value="disk">Disk</Option>
+                  </Select>
+                </Col>
+
+                {activeTab === 'prediction' && (
+                  <>
+                    <Col>
+                      <Text type="secondary" style={{ fontSize: 12 }}>Host / VM</Text><br/>
+                      <input
+                        value={dimension}
+                        onChange={e => setDimension(e.target.value)}
+                        placeholder="test-compute1"
+                        style={{ width: 180, padding: '5px 11px', border: '1px solid #d9d9d9', borderRadius: 4 }}
+                      />
+                    </Col>
+                    <Col>
+                      <Text type="secondary" style={{ fontSize: 12 }}>Kapsam</Text><br/>
+                      <Select value={scope} onChange={setScope} style={{ width: 100 }}>
+                        <Option value="host">Host</Option>
+                        <Option value="vm">VM</Option>
+                      </Select>
+                    </Col>
+                  </>
+                )}
+
+                <Col>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Periyot</Text><br/>
+                  <Select value={periodDays} onChange={setPeriodDays} style={{ width: 100 }}>
+                    <Option value={7}>7 gün</Option>
+                    <Option value={30}>30 gün</Option>
+                    <Option value={60}>60 gün</Option>
+                    <Option value={90}>90 gün</Option>
+                    <Option value={180}>180 gün</Option>
+                    <Option value={365}>365 gün</Option>
+                  </Select>
+                </Col>
+
+                <Col>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Veri Kaynağı</Text><br/>
+                  <Select value={metricSource} onChange={setMetricSource} style={{ width: 130 }}>
+                    <Option value="real">Gerçek Kullanım</Option>
+                    <Option value="placement">Placement</Option>
+                  </Select>
+                </Col>
+
+                <Col>
+                  <Text type="secondary" style={{ fontSize: 12 }}>Algoritma</Text><br/>
+                  <Select value={algorithm} onChange={setAlgorithm} style={{ width: 110 }}>
+                    <Option value="prophet">Prophet</Option>
+                    <Option value="arima">ARIMA</Option>
+                  </Select>
+                </Col>
+
+                <Col>
+                  <br/>
+                  <Button type="primary" onClick={handleRun} loading={loading}>
+                    Tahminle
+                  </Button>
+                </Col>
+              </Row>
+            </div>
+
+            {/* Error */}
+            {error && <Alert type="error" message="Hata" description={error} showIcon closable style={{ marginBottom: 16 }} />}
+
+            {/* Loading */}
+            {loading && (
+              <div style={{ textAlign: 'center', padding: 80 }}>
+                <Spin size="large" tip="Prophet/ARIMA model eğitiliyor..." />
+              </div>
+            )}
+
+            {/* Sonuclar */}
+            {!loading && result && (
+              <>
+                {activeTab === 'report' ? (
+                  <SystemReportCard data={result} />
+                ) : (
+                  <PredictionCard
+                    data={result}
+                    title={`${resourceType.toUpperCase()} Tahmini — ${result.dimension || result.scope || ''}`}
+                  />
+                )}
+
+                {trendData && (
+                  <Card title="Trend Grafiği" style={{ marginTop: 16 }}>
+                    <TrendChart data={trendData} />
+                  </Card>
+                )}
+              </>
+            )}
+          </Content>
+        </Layout>
+      );
+    }
+
+    ReactDOM.render(<App />, document.getElementById('root'));
+  </script>
+</body>
+</html>

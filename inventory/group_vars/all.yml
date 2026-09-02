@@ -1,0 +1,65 @@
+---
+# ==============================================================================
+# OpenStack Safir All-in-One Global Variables
+# ==============================================================================
+
+# Target Host & Networking
+openstack_management_bridge: "br-mgmt"
+openstack_nat_bridge: "lxcbr0"
+openstack_management_network_cidr: "172.29.236.0/22"
+openstack_management_vip: "172.29.236.101"
+openstack_public_ip: "10.8.135.9"
+
+# Core Infrastructure Endpoints
+keystone_auth_url: "http://172.29.236.101:5000/v3"
+mariadb_host: "172.29.237.148"
+mariadb_port: 3306
+rabbitmq_host: "172.29.236.87"
+rabbitmq_port: 5671
+thanos_querier_url: "http://10.8.129.146:10903"
+
+# OpenSearch Configuration
+opensearch_container_name: "target2-opensearch-container"
+opensearch_container_ip: "172.29.236.152"
+opensearch_http_port: 9200
+opensearch_dashboards_port: 5601
+opensearch_cluster_name: "safir-opensearch"
+opensearch_node_name: "opensearch-node1"
+opensearch_admin_password: "SafirOpenSearch123!"
+opensearch_jvm_min_heap: "2g"
+opensearch_jvm_max_heap: "4g"
+
+# SafirCloudWatcher Configuration
+safircloudwatcher_container_name: "target2-safircloudwatcher-container-6e382838"
+safircloudwatcher_container_ip: "172.29.236.150"
+safircloudwatcher_api_port: 8839
+safircloudwatcher_events_index: "events"
+safircloudwatcher_audit_index: "audit_events"
+
+# SafirMonitoring Configuration
+safirmonitoring_container_name: "target2-safirmonitoring-container-56eb2357"
+safirmonitoring_container_ip: "172.29.236.151"
+safirmonitoring_api_port: 9739
+safirmonitoring_db_name: "safirmonitoring"
+safirmonitoring_db_user: "safirmonitoring"
+safirmonitoring_db_password: "SafirSecretPassword123!"
+
+# Grafana Configuration
+grafana_container_name: "target2-grafana-container"
+grafana_container_ip: "172.29.236.153"
+grafana_backend_port: 3000
+grafana_proxy_port: 3001
+grafana_admin_password: "SafirGrafana123!"
+
+# Skyline Dashboard Configuration (Modern Web Console)
+skyline_web_port: 9999
+skyline_apiserver_port: 28000
+skyline_db_path: "/var/lib/skyline/skyline.db"
+skyline_venv_path: "/opt/skyline/venv"
+
+# Libvirt Exporter Configuration (Host & VM Metrics)
+libvirt_exporter_port: 9177
+libvirt_exporter_uri: "qemu:///system"
+libvirt_exporter_listen_address: "0.0.0.0:9177"
+openstack_admin_password: "a93b97960d21d3555d62c"
+

@@ -1,0 +1,266 @@
+---
+# ==============================================================================
+# SafirCloudWatcher Full Lifecycle Automation Tasks
+# ==============================================================================
+
+- name: Retrieve full running LXC container inventory
+  ansible.builtin.command:
+    cmd: lxc-ls -1
+  register: lxc_list
+  changed_when: false
+
+# ------------------------------------------------------------------------------
+# 1. Container & Infrastructure Provisioning (If container is missing)
+# ------------------------------------------------------------------------------
+- name: Check if SafirCloudWatcher LXC container exists
+  ansible.builtin.set_fact:
+    scw_ct_exists: "{{ lxc_list.stdout_lines | select('search', 'safircloudwatcher-container') | list | length > 0 }}"
+
+- name: Determine SafirCloudWatcher container name
+  ansible.builtin.set_fact:
+    scw_ct: "{{ (lxc_list.stdout_lines | select('search', 'safircloudwatcher-container') | list | first) if scw_ct_exists else safircloudwatcher_container_name }}"
+
+- name: Create SafirCloudWatcher LXC container if missing
+  ansible.builtin.command: >
+    lxc-create -n {{ scw_ct }} -t download --
+    --dist ubuntu --release noble --arch amd64
+    --force-cache --server images.linuxcontainers.org
+  when: not scw_ct_exists
+
+- name: Write LXC network interface configuration (eth0.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ scw_ct }}/eth0.ini"
+    content: |
+      lxc.net.0.type = veth
+      lxc.net.0.link = {{ openstack_management_bridge }}
+      lxc.net.0.flags = up
+      lxc.net.0.hwaddr = 00:16:3e:0e:15:01
+      lxc.net.0.veth.pair = scw_eth1
+    mode: "0644"
+  when: not scw_ct_exists
+
+- name: Write LXC network interface configuration (eth1.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ scw_ct }}/eth1.ini"
+    content: |
+      lxc.net.1.type = veth
+      lxc.net.1.link = {{ openstack_nat_bridge }}
+      lxc.net.1.flags = up
+      lxc.net.1.hwaddr = 00:16:3e:0e:15:02
+      lxc.net.1.veth.pair = scw_eth0
+    mode: "0644"
+  when: not scw_ct_exists
+
+- name: Configure container config parameters
+  ansible.builtin.blockinfile:
+    path: "/var/lib/lxc/{{ scw_ct }}/config"
+    marker: "# {mark} ANSIBLE MANAGED SCW CONFIG"
+    block: |
+      lxc.apparmor.profile = generated
+      lxc.apparmor.allow_nesting = 1
+      lxc.start.auto = 1
+      lxc.start.delay = 15
+      lxc.group = onboot
+      lxc.group = openstack
+      lxc.start.order = 100
+      lxc.autodev = 1
+      lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+      lxc.include = /var/lib/lxc/{{ scw_ct }}/eth0.ini
+      lxc.include = /var/lib/lxc/{{ scw_ct }}/eth1.ini
+  when: not scw_ct_exists
+
+- name: Configure static management IP in container (eth0)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ scw_ct }}/rootfs/etc/systemd/network/eth0.network"
+    content: |
+      [Match]
+      Name = eth0
+
+      [Network]
+      Address = {{ safircloudwatcher_container_ip }}/22
+
+      [Link]
+    mode: "0644"
+  when: not scw_ct_exists
+
+- name: Ensure SafirCloudWatcher LXC container is running
+  ansible.builtin.command:
+    cmd: "lxc-start -n {{ scw_ct }}"
+  register: scw_start_res
+  changed_when: scw_start_res.rc == 0
+  failed_when: false
+
+- name: Reload container networkd and apply static IP
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ scw_ct }} -- bash -c
+      "systemctl enable systemd-networkd && systemctl restart systemd-networkd && networkctl reload && ip addr add {{ safircloudwatcher_container_ip }}/22 dev eth0 2>/dev/null || true"
+  changed_when: false
+
+# ------------------------------------------------------------------------------
+# 2. Source Code Deployment & Python Virtual Environment Setup
+# ------------------------------------------------------------------------------
+- name: Copy SafirCloudWatcher source package into container
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../packages/safir_cloud_watcher/"
+    dest: "/var/lib/lxc/{{ scw_ct }}/rootfs/opt/safir_cloud_watcher/"
+    mode: "0755"
+
+- name: Install SafirCloudWatcher into Python virtualenv inside container
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ scw_ct }} -- bash -c
+      "apt-get update -qq && apt-get install -y -qq python3-venv python3-pip uwsgi uwsgi-plugin-python3 &&
+       mkdir -p /openstack/venvs/safircloudwatcher-31.2.0 &&
+       python3 -m venv /openstack/venvs/safircloudwatcher-31.2.0 &&
+       /openstack/venvs/safircloudwatcher-31.2.0/bin/pip install --upgrade pip setuptools wheel &&
+       /openstack/venvs/safircloudwatcher-31.2.0/bin/pip install -e /opt/safir_cloud_watcher"
+  changed_when: true
+
+# ------------------------------------------------------------------------------
+# 3. RabbitMQ Permissions & Multi-vhost Messaging URL Configuration
+# ------------------------------------------------------------------------------
+- name: Identify RabbitMQ container
+  ansible.builtin.set_fact:
+    rabbitmq_ct: "{{ lxc_list.stdout_lines | select('search', 'rabbit-mq-container') | first }}"
+
+- name: Grant RabbitMQ vhost permissions to SafirCloudWatcher user
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ rabbitmq_ct }} -- rabbitmqctl set_permissions -p {{ item }} {{ safircloudwatcher_rabbit_user }} '.*' '.*' '.*'
+  loop:
+    - "nova"
+    - "cinder"
+    - "glance"
+    - "neutron"
+    - "heat"
+    - "keystone"
+    - "safircloudwatcher"
+  failed_when: false
+  changed_when: true
+
+- name: Collect transport URLs from all OpenStack core services
+  ansible.builtin.shell: >
+    lxc-attach -n {{ lxc_list.stdout_lines | select('search', item.container_pattern) | first }} --
+    grep -i '^transport_url' {{ item.conf_path }} 2>/dev/null | head -n 1 | awk '{print $3}'
+  loop: "{{ safircloudwatcher_monitored_services }}"
+  register: service_urls_raw
+  changed_when: false
+
+- name: Build list of valid messaging URLs
+  ansible.builtin.set_fact:
+    collected_messaging_urls: "{{ service_urls_raw.results | map(attribute='stdout') | select('defined') | select('match', '^rabbit://') | list }}"
+
+- name: Create /etc/safir_cloud_watcher directory inside container
+  ansible.builtin.file:
+    path: "/var/lib/lxc/{{ scw_ct }}/rootfs/etc/safir_cloud_watcher"
+    state: directory
+    mode: "0755"
+
+- name: Update SafirCloudWatcher configuration file
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ scw_ct }} -- python3 -c '
+      import os, re
+
+      conf_path = "{{ safircloudwatcher_conf_path }}"
+      content = ""
+      if os.path.exists(conf_path):
+          with open(conf_path, "r") as f:
+              content = f.read()
+
+      opensearch_block = """[opensearch]
+      host = {{ opensearch_container_ip }}
+      port = {{ opensearch_http_port }}
+      username = admin
+      password = {{ opensearch_admin_password }}
+      http_compress = False
+      use_ssl = False
+      verify_certs = False
+      ssl_assert_hostname = False
+      ssl_show_warn = False
+      ca_certs_path =
+      index_name = {{ safircloudwatcher_events_index }}
+      audit_index_name = {{ safircloudwatcher_audit_index }}"""
+
+      if "[opensearch]" in content:
+          content = re.sub(r"\[opensearch\][\s\S]*?(?=\n\[|$)", opensearch_block, content)
+      else:
+          content += "\n" + opensearch_block + "\n"
+
+      urls = {{ collected_messaging_urls | to_json }}
+      notif_lines = ["[notification]"]
+      for u in urls:
+          if u.strip():
+              notif_lines.append(f"messaging_urls = {u.strip()}")
+
+      notif_block = "\n".join(notif_lines)
+      if "[notification]" in content:
+          content = re.sub(r"\[notification\][\s\S]*?(?=\n\[|$)", notif_block + "\n", content)
+      else:
+          content += "\n" + notif_block + "\n"
+
+      with open(conf_path, "w") as f:
+          f.write(content)
+      print("[+] SafirCloudWatcher configuration written successfully")
+      '
+  changed_when: true
+
+# ------------------------------------------------------------------------------
+# 4. Service Units & Daemons Management
+# ------------------------------------------------------------------------------
+- name: Deploy SafirCloudWatcher systemd service files
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ scw_ct }}/rootfs/etc/systemd/system/{{ item.name }}.service"
+    content: "{{ item.content }}"
+    mode: "0644"
+  loop:
+    - name: "safircloudwatcher-event-manager"
+      content: |
+        [Unit]
+        Description=SafirCloudWatcher Event Manager Service
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/safir-cloud-watcher-event-manager --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
+        Restart=always
+        RestartSec=3
+
+        [Install]
+        WantedBy=multi-user.target
+
+    - name: "safircloudwatcher-processor"
+      content: |
+        [Unit]
+        Description=SafirCloudWatcher Processor Service
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/safir-cloud-watcher-processor --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
+        Restart=always
+        RestartSec=3
+
+        [Install]
+        WantedBy=multi-user.target
+
+- name: Enable and restart SafirCloudWatcher services
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ scw_ct }} -- bash -c
+      "systemctl daemon-reload && systemctl enable safircloudwatcher-api safircloudwatcher-event-manager safircloudwatcher-processor 2>/dev/null || true;
+       systemctl restart safircloudwatcher-api safircloudwatcher-event-manager safircloudwatcher-processor"
+  changed_when: true
+
+- name: Verify SafirCloudWatcher services health
+  ansible.builtin.command:
+    cmd: "lxc-attach -n {{ scw_ct }} -- systemctl is-active {{ item }}"
+  loop:
+    - "safircloudwatcher-event-manager"
+    - "safircloudwatcher-processor"
+  register: scw_health
+  until: scw_health.stdout == "active"
+  retries: 5
+  delay: 3
+  changed_when: false

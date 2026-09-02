@@ -1,0 +1,7 @@
+---
+# Event types that are stored in OpenSearch but hidden from API responses.
+# These events are still available for SIEM but not shown in the UI.
+- 'identity.authenticate'
+- 'skyline.authenticate'
+- 'audit.http.request'
+- 'audit.http.response'

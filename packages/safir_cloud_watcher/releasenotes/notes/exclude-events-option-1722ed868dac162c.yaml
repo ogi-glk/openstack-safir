@@ -1,0 +1,7 @@
+---
+prelude: >
+    Event Manager can now exclude defined events
+features:
+  - Exclude Events feature added. Events to be excluded can be listed in event/data/excluded_events.yaml file
+fixes:
+  - notification conf section typo fixed

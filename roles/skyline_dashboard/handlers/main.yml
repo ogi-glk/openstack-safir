@@ -1,0 +1,15 @@
+---
+# ==============================================================================
+# Skyline Dashboard Handlers
+# ==============================================================================
+
+- name: Restart skyline-apiserver
+  ansible.builtin.systemd:
+    name: skyline-apiserver
+    state: restarted
+    daemon_reload: true
+
+- name: Restart nginx
+  ansible.builtin.systemd:
+    name: nginx
+    state: restarted

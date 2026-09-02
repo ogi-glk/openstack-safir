@@ -1,0 +1,27 @@
+---
+# ==============================================================================
+# SafirCloudWatcher Role - Default Variables
+# ==============================================================================
+
+safircloudwatcher_conf_path: "/etc/safir_cloud_watcher/safir_cloud_watcher.conf"
+safircloudwatcher_rabbit_user: "safir_cloud_watcher"
+
+safircloudwatcher_monitored_services:
+  - name: "nova"
+    container_pattern: "nova-api"
+    conf_path: "/etc/nova/nova.conf"
+  - name: "cinder"
+    container_pattern: "cinder-api"
+    conf_path: "/etc/cinder/cinder.conf"
+  - name: "glance"
+    container_pattern: "glance-container"
+    conf_path: "/etc/glance/glance-api.conf"
+  - name: "neutron"
+    container_pattern: "neutron-server"
+    conf_path: "/etc/neutron/neutron.conf"
+  - name: "heat"
+    container_pattern: "heat-api"
+    conf_path: "/etc/heat/heat.conf"
+  - name: "keystone"
+    container_pattern: "keystone-container"
+    conf_path: "/etc/keystone/keystone.conf"

@@ -1,0 +1,69 @@
+﻿---
+# ==============================================================================
+# Libvirt Exporter Role - Tasks Sequence
+# ==============================================================================
+
+- name: 1. Install Libvirt Exporter System Dependencies & Go Compiler
+  ansible.builtin.apt:
+    name:
+      - golang-go
+      - libvirt-dev
+      - build-essential
+      - pkg-config
+      - gcc
+      - curl
+    state: present
+    update_cache: yes
+
+- name: 2. Create Libvirt Exporter Source Directory
+  ansible.builtin.file:
+    path: "{{ libvirt_exporter_src_dir }}"
+    state: directory
+    owner: "{{ libvirt_exporter_user }}"
+    group: "{{ libvirt_exporter_group }}"
+    mode: '0755'
+
+- name: 3. Synchronize Libvirt Exporter Source Code to Target Host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../packages/prometheus-libvirt-exporter/"
+    dest: "{{ libvirt_exporter_src_dir }}/"
+    owner: "{{ libvirt_exporter_user }}"
+    group: "{{ libvirt_exporter_group }}"
+    mode: '0755'
+
+- name: 4. Compile prometheus-libvirt-exporter Binary
+  ansible.builtin.shell: |
+    cd {{ libvirt_exporter_src_dir }}
+    export CGO_ENABLED=1
+    go build -mod=vendor -o {{ libvirt_exporter_binary_path }} . || go build -o {{ libvirt_exporter_binary_path }} .
+  args:
+    creates: "{{ libvirt_exporter_binary_path }}"
+
+- name: 5. Ensure Correct Permissions on Exporter Binary
+  ansible.builtin.file:
+    path: "{{ libvirt_exporter_binary_path }}"
+    owner: "{{ libvirt_exporter_user }}"
+    group: "{{ libvirt_exporter_group }}"
+    mode: '0755'
+
+- name: 6. Deploy prometheus-libvirt-exporter Systemd Service
+  ansible.builtin.template:
+    src: prometheus-libvirt-exporter.service.j2
+    dest: /etc/systemd/system/prometheus-libvirt-exporter.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart prometheus-libvirt-exporter
+
+- name: 7. Enable and Start prometheus-libvirt-exporter Service
+  ansible.builtin.systemd:
+    name: prometheus-libvirt-exporter
+    enabled: yes
+    state: started
+    daemon_reload: yes
+
+- name: 8. Wait for Libvirt Exporter Port 9177 to be Listening
+  ansible.builtin.wait_for:
+    port: "{{ libvirt_exporter_port }}"
+    host: "127.0.0.1"
+    timeout: 30

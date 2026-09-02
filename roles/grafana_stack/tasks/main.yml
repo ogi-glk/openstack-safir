@@ -1,0 +1,259 @@
+---
+# ==============================================================================
+# Grafana Stack & Keystone Auth Proxy Automation Tasks
+# ==============================================================================
+
+- name: Check if Grafana LXC container exists
+  ansible.builtin.command:
+    cmd: "lxc-info -n {{ grafana_container_name }}"
+  register: gf_container_check
+  changed_when: false
+  failed_when: false
+
+- name: Create Grafana LXC container if missing
+  ansible.builtin.command: >
+    lxc-create -n {{ grafana_container_name }} -t download --
+    --dist ubuntu
+    --release noble
+    --arch amd64
+    --force-cache --server images.linuxcontainers.org
+  when: gf_container_check.rc != 0
+
+- name: Write LXC network interface configuration (eth0.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/eth0.ini"
+    content: |
+      lxc.net.0.type = veth
+      lxc.net.0.link = {{ openstack_management_bridge }}
+      lxc.net.0.flags = up
+      lxc.net.0.hwaddr = {{ grafana_mac_eth0 }}
+      lxc.net.0.veth.pair = gf_eth1
+    mode: "0644"
+
+- name: Write LXC network interface configuration (eth1.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/eth1.ini"
+    content: |
+      lxc.net.1.type = veth
+      lxc.net.1.link = {{ openstack_nat_bridge }}
+      lxc.net.1.flags = up
+      lxc.net.1.hwaddr = {{ grafana_mac_eth1 }}
+      lxc.net.1.veth.pair = gf_eth0
+    mode: "0644"
+
+- name: Configure container config includes and startup parameters
+  ansible.builtin.blockinfile:
+    path: "/var/lib/lxc/{{ grafana_container_name }}/config"
+    marker: "# {mark} ANSIBLE MANAGED GRAFANA CONFIG"
+    block: |
+      lxc.apparmor.profile = generated
+      lxc.apparmor.allow_nesting = 1
+      lxc.start.auto = 1
+      lxc.start.delay = 15
+      lxc.group = onboot
+      lxc.group = openstack
+      lxc.start.order = 100
+      lxc.autodev = 1
+      lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+      lxc.include = /var/lib/lxc/{{ grafana_container_name }}/eth0.ini
+      lxc.include = /var/lib/lxc/{{ grafana_container_name }}/eth1.ini
+
+- name: Create systemd-networkd directory inside container rootfs
+  ansible.builtin.file:
+    path: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/systemd/network"
+    state: directory
+    mode: "0755"
+
+- name: Configure static management IP in container networkd (eth0)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/systemd/network/eth0.network"
+    content: |
+      [Match]
+      Name = eth0
+
+      [Network]
+      Address = {{ grafana_container_ip }}/22
+
+      [Link]
+    mode: "0644"
+
+- name: Configure DHCP NAT IP in container networkd (eth1)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/systemd/network/eth1.network"
+    content: |
+      [Match]
+      Name = eth1
+
+      [DHCP]
+      UseDNS = yes
+      UseNTP = yes
+      RouteMetric = 20
+
+      [Network]
+      DHCP = yes
+
+      [Link]
+    mode: "0644"
+
+- name: Ensure Grafana LXC container is running
+  ansible.builtin.command:
+    cmd: "lxc-start -n {{ grafana_container_name }}"
+  register: gf_start_res
+  changed_when: gf_start_res.rc == 0
+  failed_when: false
+
+- name: Reload container networkd and apply static IP
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ grafana_container_name }} -- bash -c
+      "systemctl enable systemd-networkd && systemctl restart systemd-networkd && networkctl reload && ip addr add {{ grafana_container_ip }}/22 dev eth0 2>/dev/null || true"
+  changed_when: false
+
+- name: Check if Grafana package is installed
+  ansible.builtin.command:
+    cmd: "lxc-attach -n {{ grafana_container_name }} -- dpkg -s grafana"
+  register: gf_pkg_check
+  changed_when: false
+  failed_when: false
+
+- name: Install Grafana OSS & Python dependencies inside container
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ grafana_container_name }} -- bash -c
+      "apt-get update -qq && apt-get install -y -qq curl gnupg2 apt-transport-https python3-fastapi python3-uvicorn python3-httpx python3-requests &&
+       mkdir -p /etc/apt/keyrings/ &&
+       curl -fsSL {{ grafana_repo_gpg_url }} | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg &&
+       echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] {{ grafana_repo_url }} stable main' > /etc/apt/sources.list.d/grafana.list &&
+       apt-get update -qq &&
+       apt-get install -y -qq grafana"
+  when: gf_pkg_check.rc != 0
+
+- name: Configure Grafana auth.proxy and security settings
+  ansible.builtin.blockinfile:
+    path: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/grafana/grafana.ini"
+    marker: "; {mark} ANSIBLE MANAGED AUTH PROXY"
+    block: |
+      [auth.proxy]
+      enabled = true
+      header_name = X-WEBAUTH-USER
+      header_property = username
+      auto_sign_up = true
+      enable_login_token = false
+
+      [auth.anonymous]
+      enabled = false
+
+      [security]
+      admin_user = admin
+      admin_password = {{ grafana_admin_password }}
+      allow_embedding = true
+
+- name: Create provisioning directories for datasources and dashboards
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/grafana/provisioning/datasources"
+    - "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/grafana/provisioning/dashboards"
+    - "/var/lib/lxc/{{ grafana_container_name }}/rootfs/var/lib/grafana/dashboards"
+    - "/var/lib/lxc/{{ grafana_container_name }}/rootfs/opt/grafana-proxy"
+
+- name: Provision Thanos-Prometheus Data Source
+  ansible.builtin.template:
+    src: thanos_datasource.yaml.j2
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/grafana/provisioning/datasources/thanos.yaml"
+    mode: "0644"
+
+- name: Provision OpenStack Dashboard provider
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/grafana/provisioning/dashboards/openstack.yaml"
+    content: |
+      apiVersion: 1
+      providers:
+        - name: 'OpenStack'
+          orgId: 1
+          folder: 'OpenStack'
+          type: file
+          options:
+            path: /var/lib/grafana/dashboards
+    mode: "0644"
+
+- name: Provision OpenStack Overview Dashboard JSON
+  ansible.builtin.template:
+    src: openstack_overview.json.j2
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/var/lib/grafana/dashboards/openstack_overview.json"
+    mode: "0644"
+
+- name: Deploy Grafana Keystone Auth Proxy script
+  ansible.builtin.template:
+    src: proxy.py.j2
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/opt/grafana-proxy/proxy.py"
+    mode: "0644"
+
+- name: Create systemd unit for Grafana Keystone Auth Proxy
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/systemd/system/grafana-proxy.service"
+    content: |
+      [Unit]
+      Description=Grafana Keystone Authentication Proxy
+      After=network.target grafana-server.service
+
+      [Service]
+      Type=simple
+      ExecStart=/usr/bin/python3 -m uvicorn proxy:app --host 0.0.0.0 --port {{ grafana_proxy_port }} --app-dir /opt/grafana-proxy
+      Restart=always
+      RestartSec=3
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+
+- name: Enable and restart Grafana and Proxy daemons
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ grafana_container_name }} -- bash -c
+      "systemctl daemon-reload && systemctl enable grafana-server grafana-proxy && systemctl restart grafana-server grafana-proxy"
+  changed_when: true
+
+- name: Verify Grafana Proxy health
+  ansible.builtin.uri:
+    url: "http://{{ grafana_container_ip }}:{{ grafana_proxy_port }}/api/health"
+    status_code: 200
+  register: gf_api_res
+  until: gf_api_res.status == 200
+  retries: 10
+  delay: 3
+
+- name: Configure HAProxy load balancer for Grafana (Port 3000)
+  ansible.builtin.blockinfile:
+    path: /etc/haproxy/haproxy.cfg
+    marker: "# {mark} ANSIBLE MANAGED GRAFANA PROXY"
+    block: |
+      frontend grafana-front-1
+          bind {{ openstack_public_ip }}:{{ grafana_backend_port }} ssl crt /etc/haproxy/ssl/haproxy_ogi-openstack-2-{{ openstack_public_ip }}.pem alpn h2,http/1.1
+          option httplog
+          option forwardfor except 127.0.0.0/8
+          http-request add-header X-Forwarded-Proto https
+          mode http
+          default_backend grafana-back
+
+      frontend grafana-front-2
+          bind {{ openstack_management_vip }}:{{ grafana_backend_port }}
+          option httplog
+          option forwardfor except 127.0.0.0/8
+          mode http
+          default_backend grafana-back
+
+      backend grafana-back
+          mode http
+          balance leastconn
+          option forwardfor
+          option httpchk GET /api/health
+          http-check expect status 200
+          server {{ grafana_container_name }} {{ grafana_container_ip }}:{{ grafana_proxy_port }} check port {{ grafana_proxy_port }} inter 12000 rise 3 fall 3
+
+- name: Reload HAProxy
+  ansible.builtin.service:
+    name: haproxy
+    state: reloaded

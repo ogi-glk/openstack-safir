@@ -1,0 +1,89 @@
+---
+# ==============================================================================
+# OpenStack AIO Environment Pre-flight Validation
+# ==============================================================================
+
+- name: Display pre-flight check banner
+  ansible.builtin.debug:
+    msg: "Starting pre-flight validation for OpenStack All-in-One base infrastructure..."
+
+- name: Verify Host Operating System
+  ansible.builtin.assert:
+    that:
+      - ansible_os_family == "Debian"
+      - ansible_distribution == "Ubuntu"
+      - ansible_distribution_version in ["22.04", "24.04"]
+    fail_msg: >-
+      [CRITICAL ERROR] Target host must be Ubuntu 22.04 LTS or 24.04 LTS.
+      Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}
+    success_msg: "[PASS] Supported operating system detected: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+
+- name: Check if LXC runtime is installed and operational
+  ansible.builtin.command:
+    cmd: lxc-ls
+  register: lxc_list_raw
+  changed_when: false
+  failed_when: false
+
+- name: Assert LXC runtime is active
+  ansible.builtin.assert:
+    that:
+      - lxc_list_raw.rc == 0
+    fail_msg: >-
+      [CRITICAL ERROR] LXC container runtime is NOT installed or operational on target host.
+      OpenStack-Ansible (OSA) All-in-One must be installed before deploying Safir extensions.
+    success_msg: "[PASS] LXC runtime is active and operational."
+
+- name: Verify required network bridges exist on host
+  ansible.builtin.command:
+    cmd: "ip link show {{ item }}"
+  loop: "{{ prerequisites_required_bridges }}"
+  register: bridge_check
+  changed_when: false
+  failed_when: false
+
+- name: Assert management and NAT bridges are present
+  ansible.builtin.assert:
+    that:
+      - item.rc == 0
+    fail_msg: >-
+      [CRITICAL ERROR] Required bridge '{{ item.item }}' is missing on target host.
+      Please verify that OpenStack-Ansible networking (br-mgmt and lxcbr0) is properly initialized.
+    success_msg: "[PASS] Network bridge '{{ item.item }}' exists."
+  loop: "{{ bridge_check.results }}"
+
+- name: Check OpenStack core container presence
+  ansible.builtin.set_fact:
+    running_containers: "{{ lxc_list_raw.stdout_lines }}"
+
+- name: Assert core OpenStack containers are present in LXC
+  ansible.builtin.assert:
+    that:
+      - running_containers | select('search', item) | list | length > 0
+    fail_msg: >-
+      [CRITICAL ERROR] Core OpenStack container for service '{{ item }}' is missing in LXC inventory.
+      Please ensure OpenStack-Ansible AIO deployment has completed successfully before running this playbook.
+    success_msg: "[PASS] Core container for '{{ item }}' is present."
+  loop: "{{ prerequisites_required_containers }}"
+
+- name: Validate Keystone Identity Endpoint Health
+  ansible.builtin.uri:
+    url: "{{ keystone_auth_url }}"
+    method: GET
+    status_code: [200, 300]
+    timeout: 5
+  register: keystone_health
+  ignore_errors: true
+
+- name: Assert Keystone API is responding
+  ansible.builtin.assert:
+    that:
+      - keystone_health.status in [200, 300]
+    fail_msg: >-
+      [CRITICAL ERROR] Keystone Identity API is NOT reachable at {{ keystone_auth_url }}.
+      Ensure Keystone and HAProxy VIP services are up and running.
+    success_msg: "[PASS] Keystone API is reachable and healthy at {{ keystone_auth_url }}."
+
+- name: Summary of Pre-flight Validation
+  ansible.builtin.debug:
+    msg: ">>> All OpenStack AIO baseline prerequisites are SATISFIED! Proceeding with Safir Stack installation. <<<"

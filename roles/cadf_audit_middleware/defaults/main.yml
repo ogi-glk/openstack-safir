@@ -1,0 +1,81 @@
+---
+# ==============================================================================
+# CADF Audit Middleware Role - Default Variables
+# ==============================================================================
+
+cadf_ignore_req_list: "GET,HEAD"
+
+cadf_audit_services:
+  - name: "nova"
+    container_pattern: "nova-api"
+    conf_path: "/etc/nova/nova.conf"
+    paste_path: "/etc/nova/api-paste.ini"
+    audit_map_path: "/etc/nova/api_audit_map.conf"
+    endpoint_type: "compute"
+    service_units: ["nova-api", "nova-api-os-compute", "uwsgi"]
+    keywords:
+      servers: "server_id"
+      flavors: "flavor_id"
+      images: "image_id"
+      os-keypairs: "keypair_name"
+      os-availability-zone: "zone_id"
+      os-aggregates: "aggregate_id"
+      os-hypervisors: "hypervisor_id"
+      os-migrations: "migration_id"
+      os-server-groups: "server_group_id"
+
+  - name: "cinder"
+    container_pattern: "cinder-api"
+    conf_path: "/etc/cinder/cinder.conf"
+    paste_path: "/etc/cinder/api-paste.ini"
+    audit_map_path: "/etc/cinder/api_audit_map.conf"
+    endpoint_type: "volume"
+    service_units: ["cinder-api", "cinder-wsgi-public", "uwsgi"]
+    keywords:
+      volumes: "volume_id"
+      snapshots: "snapshot_id"
+      backups: "backup_id"
+      types: "type_id"
+      transfers: "transfer_id"
+      attachments: "attachment_id"
+      groups: "group_id"
+
+  - name: "glance"
+    container_pattern: "glance-container"
+    conf_path: "/etc/glance/glance-api.conf"
+    paste_path: "/etc/glance/glance-api-paste.ini"
+    audit_map_path: "/etc/glance/api_audit_map.conf"
+    endpoint_type: "image"
+    service_units: ["glance-api", "uwsgi"]
+    keywords:
+      images: "image_id"
+
+  - name: "neutron"
+    container_pattern: "neutron-server"
+    conf_path: "/etc/neutron/neutron.conf"
+    paste_path: "/etc/neutron/api-paste.ini"
+    audit_map_path: "/etc/neutron/api_audit_map.conf"
+    endpoint_type: "network"
+    service_units: ["neutron-server", "uwsgi"]
+    keywords:
+      networks: "network_id"
+      subnets: "subnet_id"
+      ports: "port_id"
+      routers: "router_id"
+      floatingips: "floatingip_id"
+      security-groups: "security_group_id"
+      security-group-rules: "security_group_rule_id"
+
+  - name: "heat"
+    container_pattern: "heat-api"
+    conf_path: "/etc/heat/heat.conf"
+    paste_path: "/etc/heat/api-paste.ini"
+    audit_map_path: "/etc/heat/api_audit_map.conf"
+    endpoint_type: "orchestration"
+    service_units: ["heat-api", "heat-api-cfn", "uwsgi"]
+    keywords:
+      stacks: "stack_id"
+      resources: "resource_name"
+      events: "event_id"
+      snapshots: "snapshot_id"
+      templates: "template_id"

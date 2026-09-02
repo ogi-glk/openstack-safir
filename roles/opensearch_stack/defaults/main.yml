@@ -1,0 +1,15 @@
+---
+# ==============================================================================
+# OpenSearch Stack Role - Default Variables
+# ==============================================================================
+
+opensearch_lxc_template_dist: "ubuntu"
+opensearch_lxc_template_release: "noble"
+opensearch_lxc_template_arch: "amd64"
+
+opensearch_mac_eth0: "00:16:3e:0e:23:01"
+opensearch_mac_eth1: "00:16:3e:0e:23:02"
+
+opensearch_repo_gpg_url: "https://artifacts.opensearch.org/publickeys/opensearch.pgp"
+opensearch_repo_url: "https://artifacts.opensearch.org/releases/bundle/opensearch/2.x/apt"
+opensearch_dashboards_repo_url: "https://artifacts.opensearch.org/releases/bundle/opensearch-dashboards/2.x/apt"

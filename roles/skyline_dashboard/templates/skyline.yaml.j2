@@ -1,0 +1,38 @@
+---
+# ==============================================================================
+# OpenStack Skyline API Server Configuration
+# ==============================================================================
+
+default:
+  port: {{ skyline_apiserver_port }}
+  host: "127.0.0.1"
+  secret_key: "{{ skyline_secret_key }}"
+  log_dir: "{{ skyline_log_dir }}"
+  log_level: "INFO"
+  ssl_verify: {{ 'true' if skyline_ssl_verify else 'false' }}
+  database_url: "{{ skyline_db_url }}"
+
+openstack:
+  keystone_url: "{{ skyline_keystone_url }}"
+  default_region: "{{ skyline_default_region }}"
+  region_name: "{{ skyline_region_name }}"
+  user_default_domain: "{{ skyline_user_default_domain }}"
+  interface: "{{ skyline_interface }}"
+  insecure: {{ 'true' if skyline_insecure else 'false' }}
+  system_user_name: "{{ skyline_admin_user }}"
+  system_user_password: "{{ skyline_admin_password }}"
+  system_project: "{{ skyline_admin_project }}"
+  system_project_domain: "{{ skyline_admin_domain }}"
+  system_user_domain: "{{ skyline_admin_domain }}"
+  base_domains:
+{% for domain in skyline_base_domains %}
+    - "{{ domain }}"
+{% endfor %}
+
+database:
+  connection: "{{ skyline_db_url }}"
+  echo: false
+
+session:
+  engine: "database"
+  expire: 86400

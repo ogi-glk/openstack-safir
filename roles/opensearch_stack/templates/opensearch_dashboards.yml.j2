@@ -1,0 +1,4 @@
+server.host: {{ opensearch_container_ip }}
+server.port: {{ opensearch_dashboards_port }}
+opensearch.hosts: ["http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}"]
+opensearch.ssl.verificationMode: none

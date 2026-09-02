@@ -1,0 +1,181 @@
+---
+# ==============================================================================
+# Skyline Dashboard Role - Tasks Sequence
+# ==============================================================================
+
+- name: 1. Install Skyline System Dependencies & Nginx
+  ansible.builtin.apt:
+    name:
+      - nginx
+      - git
+      - python3-pip
+      - python3-venv
+      - python3-dev
+      - build-essential
+      - libssl-dev
+      - libffi-dev
+      - sqlite3
+      - curl
+    state: present
+    update_cache: yes
+
+- name: 2. Create Skyline Required System Directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ skyline_config_dir }}"
+    - "{{ skyline_data_dir }}"
+    - "{{ skyline_log_dir }}"
+    - "{{ skyline_console_dir }}"
+    - "/opt/skyline"
+
+- name: 3. Create Isolated Python Virtual Environment
+  ansible.builtin.command:
+    cmd: "python3 -m venv {{ skyline_venv_dir }}"
+    creates: "{{ skyline_venv_dir }}/bin/activate"
+
+- name: 4. Install skyline-apiserver, gunicorn, uvicorn & dependencies
+  ansible.builtin.pip:
+    virtualenv: "{{ skyline_venv_dir }}"
+    name:
+      - pip
+      - "setuptools<70"
+      - "wheel"
+      - "Cython<3"
+      - "pyyaml>=6.0.1"
+      - gunicorn
+      - "uvicorn[standard]"
+      - "openstacksdk>=1.0.0"
+      - "fastapi>=0.95.0"
+      - "pydantic>=1.10.0,<2.0.0"
+      - "sqlalchemy>=1.4.0,<2.0.0"
+      - alembic
+      - requests
+      - skyline-apiserver
+    state: present
+  ignore_errors: yes
+
+- name: 5. Deploy Skyline Configuration (skyline.yaml)
+  ansible.builtin.template:
+    src: skyline.yaml.j2
+    dest: "{{ skyline_config_dir }}/skyline.yaml"
+    owner: root
+    group: root
+    mode: '0640'
+  notify: Restart skyline-apiserver
+
+- name: 6. Apply Skyline Compatibility and Authentication Patches
+  ansible.builtin.shell: |
+    {{ skyline_venv_dir }}/bin/python3 -c "
+    import os
+    from sqlalchemy import create_engine
+
+    # 1. Patch main.py whitelist to allow unauthenticated pre-login domains check
+    main_path = '{{ skyline_venv_dir }}/lib/python3.12/site-packages/skyline_apiserver/main.py'
+    if os.path.exists(main_path):
+        with open(main_path, 'r') as f:
+            content = f.read()
+        content = content.replace('# f\"{constants.API_PREFIX}/contrib/domains\"', 'f\"{constants.API_PREFIX}/contrib/domains\"')
+        with open(main_path, 'w') as f:
+            f.write(content)
+
+    # 2. Patch contrib.py to remove token requirement from list_domains
+    contrib_path = '{{ skyline_venv_dir }}/lib/python3.12/site-packages/skyline_apiserver/api/v1/contrib.py'
+    if os.path.exists(contrib_path):
+        with open(contrib_path, 'r') as f:
+            lines = f.readlines()
+        new_lines = []
+        skip = False
+        for line in lines:
+            if 'def list_domains(' in line:
+                new_lines.append(\"def list_domains(request: Request, region: str = '{{ skyline_default_region }}') -> List[str]:\\n\")
+                new_lines.append(\"    original_ip = deps.get_original_ip(request)\\n\")
+                new_lines.append(\"    try:\\n\")
+                new_lines.append(\"        return get_domains('', region, original_ip=original_ip)\\n\")
+                new_lines.append(\"    except Exception:\\n\")
+                new_lines.append(\"        return ['Default']\\n\")
+                skip = True
+            elif skip and '@router.get(' in line:
+                skip = False
+                new_lines.append('\\n\\n' + line)
+            elif not skip:
+                new_lines.append(line)
+        with open(contrib_path, 'w') as f:
+            f.writelines(new_lines)
+
+    # 3. Patch db/base.py to auto-initialize SQLite schema on boot
+    base_path = '{{ skyline_venv_dir }}/lib/python3.12/site-packages/skyline_apiserver/db/base.py'
+    if os.path.exists(base_path):
+        with open(base_path, 'r') as f:
+            code = f.read()
+        target = 'DATABASE = DBWrapper(engine)'
+        replacement = 'from skyline_apiserver.db.models import METADATA\\n    METADATA.create_all(bind=engine)\\n    DATABASE = DBWrapper(engine)'
+        if target in code and 'METADATA.create_all' not in code:
+            code = code.replace(target, replacement, 1)
+            with open(base_path, 'w') as f:
+                f.write(code)
+
+    # 4. Initialize SQLite database schema
+    try:
+        from skyline_apiserver.db.models import METADATA
+        engine = create_engine('{{ skyline_db_url }}')
+        METADATA.create_all(bind=engine)
+    except Exception as e:
+        print('DB Init Warning:', e)
+    "
+  register: patch_res
+  changed_when: true
+
+- name: 7. Ensure Proper Permissions on Skyline SQLite Database
+  ansible.builtin.file:
+    path: "{{ item }}"
+    mode: '0777'
+    state: file
+  loop:
+    - "/var/lib/skyline/skyline.db"
+  ignore_errors: yes
+
+- name: 8. Deploy skyline-apiserver Systemd Unit
+  ansible.builtin.template:
+    src: skyline-apiserver.service.j2
+    dest: /etc/systemd/system/skyline-apiserver.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart skyline-apiserver
+
+- name: 9. Deploy Nginx Skyline Reverse Proxy Site Configuration
+  ansible.builtin.template:
+    src: nginx_skyline.conf.j2
+    dest: /etc/nginx/sites-available/skyline.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Restart nginx
+
+- name: 10. Enable Skyline Nginx Site & Remove Default
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/skyline.conf
+    dest: /etc/nginx/sites-enabled/skyline.conf
+    state: link
+  notify: Restart nginx
+
+- name: 11. Ensure Default Nginx Site is Removed
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart nginx
+
+- name: 12. Enable and Start Skyline & Nginx Services
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: yes
+    state: started
+    daemon_reload: yes
+  loop:
+    - skyline-apiserver
+    - nginx

@@ -1,0 +1,12 @@
+﻿---
+# ==============================================================================
+# Libvirt Exporter Role - Default Variables
+# ==============================================================================
+
+libvirt_exporter_port: 9177
+libvirt_exporter_listen_address: "0.0.0.0:{{ libvirt_exporter_port }}"
+libvirt_exporter_uri: "qemu:///system"
+libvirt_exporter_binary_path: "/usr/local/bin/prometheus-libvirt-exporter"
+libvirt_exporter_src_dir: "/opt/prometheus-libvirt-exporter"
+libvirt_exporter_user: "root"
+libvirt_exporter_group: "root"

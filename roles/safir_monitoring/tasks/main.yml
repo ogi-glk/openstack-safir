@@ -1,0 +1,250 @@
+---
+# ==============================================================================
+# SafirMonitoring Full Lifecycle Automation Tasks
+# ==============================================================================
+
+- name: Retrieve full running LXC container inventory
+  ansible.builtin.command:
+    cmd: lxc-ls -1
+  register: lxc_list
+  changed_when: false
+
+# ------------------------------------------------------------------------------
+# 1. Container & Infrastructure Provisioning (If container is missing)
+# ------------------------------------------------------------------------------
+- name: Check if SafirMonitoring LXC container exists
+  ansible.builtin.set_fact:
+    sm_ct_exists: "{{ lxc_list.stdout_lines | select('search', 'safirmonitoring-container') | list | length > 0 }}"
+
+- name: Determine SafirMonitoring container name
+  ansible.builtin.set_fact:
+    sm_ct: "{{ (lxc_list.stdout_lines | select('search', 'safirmonitoring-container') | list | first) if sm_ct_exists else safirmonitoring_container_name }}"
+
+- name: Create SafirMonitoring LXC container if missing
+  ansible.builtin.command: >
+    lxc-create -n {{ sm_ct }} -t download --
+    --dist ubuntu --release noble --arch amd64
+    --force-cache --server images.linuxcontainers.org
+  when: not sm_ct_exists
+
+- name: Write LXC network interface configuration (eth0.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/eth0.ini"
+    content: |
+      lxc.net.0.type = veth
+      lxc.net.0.link = {{ openstack_management_bridge }}
+      lxc.net.0.flags = up
+      lxc.net.0.hwaddr = 00:16:3e:0e:16:01
+      lxc.net.0.veth.pair = sm_eth1
+    mode: "0644"
+  when: not sm_ct_exists
+
+- name: Write LXC network interface configuration (eth1.ini)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/eth1.ini"
+    content: |
+      lxc.net.1.type = veth
+      lxc.net.1.link = {{ openstack_nat_bridge }}
+      lxc.net.1.flags = up
+      lxc.net.1.hwaddr = 00:16:3e:0e:16:02
+      lxc.net.1.veth.pair = sm_eth0
+    mode: "0644"
+  when: not sm_ct_exists
+
+- name: Configure container config parameters
+  ansible.builtin.blockinfile:
+    path: "/var/lib/lxc/{{ sm_ct }}/config"
+    marker: "# {mark} ANSIBLE MANAGED SM CONFIG"
+    block: |
+      lxc.apparmor.profile = generated
+      lxc.apparmor.allow_nesting = 1
+      lxc.start.auto = 1
+      lxc.start.delay = 15
+      lxc.group = onboot
+      lxc.group = openstack
+      lxc.start.order = 100
+      lxc.autodev = 1
+      lxc.mount.auto = proc:mixed sys:ro cgroup:mixed
+      lxc.include = /var/lib/lxc/{{ sm_ct }}/eth0.ini
+      lxc.include = /var/lib/lxc/{{ sm_ct }}/eth1.ini
+  when: not sm_ct_exists
+
+- name: Configure static management IP in container (eth0)
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/systemd/network/eth0.network"
+    content: |
+      [Match]
+      Name = eth0
+
+      [Network]
+      Address = {{ safirmonitoring_container_ip }}/22
+
+      [Link]
+    mode: "0644"
+  when: not sm_ct_exists
+
+- name: Ensure SafirMonitoring LXC container is running
+  ansible.builtin.command:
+    cmd: "lxc-start -n {{ sm_ct }}"
+  register: sm_start_res
+  changed_when: sm_start_res.rc == 0
+  failed_when: false
+
+- name: Reload container networkd and apply static IP
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ sm_ct }} -- bash -c
+      "systemctl enable systemd-networkd && systemctl restart systemd-networkd && networkctl reload && ip addr add {{ safirmonitoring_container_ip }}/22 dev eth0 2>/dev/null || true"
+  changed_when: false
+
+# ------------------------------------------------------------------------------
+# 2. Source Code Deployment & Python Virtual Environment Setup
+# ------------------------------------------------------------------------------
+- name: Copy SafirMonitoring source package into container
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../packages/safir_monitoring/"
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/opt/safir_monitoring/"
+    mode: "0755"
+
+- name: Install SafirMonitoring into Python virtualenv inside container
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ sm_ct }} -- bash -c
+      "apt-get update -qq && apt-get install -y -qq python3-venv python3-pip gunicorn uvicorn &&
+       mkdir -p /openstack/venvs/safirmonitoring-31.2.0 &&
+       python3 -m venv /openstack/venvs/safirmonitoring-31.2.0 &&
+       /openstack/venvs/safirmonitoring-31.2.0/bin/pip install --upgrade pip setuptools wheel pbr &&
+       /openstack/venvs/safirmonitoring-31.2.0/bin/pip install aiosmtplib databases aiomysql APScheduler python-memcached uvicorn gunicorn &&
+       /openstack/venvs/safirmonitoring-31.2.0/bin/pip install -e /opt/safir_monitoring"
+  changed_when: true
+
+# ------------------------------------------------------------------------------
+# 3. PasteDeploy Pipeline & Gunicorn Configuration
+# ------------------------------------------------------------------------------
+- name: Create /etc/safirmonitoring directory inside container
+  ansible.builtin.file:
+    path: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring"
+    state: directory
+    mode: "0755"
+
+- name: Fix PasteDeploy pipeline to use direct ASGI application
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring/api_paste.ini"
+    content: |
+      [pipeline:main]
+      pipeline = safir_monitoring
+
+      [app:safir_monitoring]
+      paste.app_factory = safir_monitoring.main:app_factory
+    mode: "0644"
+
+- name: Optimize Gunicorn worker configuration
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring/gunicorn.py"
+    content: |
+      bind = "{{ safirmonitoring_container_ip }}:{{ safirmonitoring_api_port }}"
+      workers = {{ safirmonitoring_gunicorn_workers }}
+      worker_class = "uvicorn.workers.UvicornWorker"
+      timeout = 60
+      keepalive = 5
+      reuse_port = {{ safirmonitoring_gunicorn_reuse_port }}
+    mode: "0644"
+
+- name: Configure Thanos Querier endpoint in safirmonitoring.conf
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ sm_ct }} -- python3 -c '
+      import os, re
+      conf_path = "/etc/safirmonitoring/safirmonitoring.conf"
+      content = ""
+      if os.path.exists(conf_path):
+          with open(conf_path, "r") as f:
+              content = f.read()
+      
+      thanos_block = """[thanos]
+      querier_endpoint = "{{ thanos_querier_url }}"
+      rules_dir = /var/lib/thanos/rules"""
+
+      if "[thanos]" in content:
+          content = re.sub(r"\[thanos\][\s\S]*?(?=\n\[|$)", thanos_block, content)
+      else:
+          content += "\n" + thanos_block + "\n"
+
+      with open(conf_path, "w") as f:
+          f.write(content)
+      print("[+] Updated thanos querier endpoint")
+      '
+  changed_when: true
+
+# ------------------------------------------------------------------------------
+# 4. Service Units & Daemons Management
+# ------------------------------------------------------------------------------
+- name: Deploy SafirMonitoring API systemd unit
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/systemd/system/safirmonitoring-api.service"
+    content: |
+      [Unit]
+      Description=Safir Monitoring API Service
+      After=network.target
+
+      [Service]
+      Type=simple
+      ExecStart=/openstack/venvs/safirmonitoring-31.2.0/bin/gunicorn -c /etc/safirmonitoring/gunicorn.py safir_monitoring.main:asgi_app
+      Restart=always
+      RestartSec=3
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: "0644"
+
+- name: Restart SafirMonitoring API daemons
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ sm_ct }} -- bash -c
+      "pkill -9 -f gunicorn 2>/dev/null || true; systemctl daemon-reload && systemctl enable safirmonitoring-api && systemctl restart safirmonitoring-api"
+  changed_when: true
+
+- name: Verify SafirMonitoring API health
+  ansible.builtin.uri:
+    url: "http://{{ safirmonitoring_container_ip }}:{{ safirmonitoring_api_port }}{{ safirmonitoring_health_endpoint }}"
+    status_code: 200
+  register: sm_api_res
+  until: sm_api_res.status == 200
+  retries: 10
+  delay: 3
+
+# ------------------------------------------------------------------------------
+# 5. HAProxy Load Balancer Routing
+# ------------------------------------------------------------------------------
+- name: Update HAProxy configuration for SafirMonitoring
+  ansible.builtin.blockinfile:
+    path: /etc/haproxy/haproxy.cfg
+    marker: "# {mark} ANSIBLE MANAGED SAFIRMONITORING PROXY"
+    block: |
+      frontend safirmonitoring_api-front-1
+          bind {{ openstack_public_ip }}:{{ safirmonitoring_api_port }} ssl crt /etc/haproxy/ssl/haproxy_ogi-openstack-2-{{ openstack_public_ip }}.pem alpn h2,http/1.1
+          option httplog
+          option forwardfor except 127.0.0.0/8
+          http-request add-header X-Forwarded-Proto https
+          mode http
+          default_backend safirmonitoring_api-back
+
+      frontend safirmonitoring_api-front-2
+          bind {{ openstack_management_vip }}:{{ safirmonitoring_api_port }}
+          option httplog
+          option forwardfor except 127.0.0.0/8
+          mode http
+          default_backend safirmonitoring_api-back
+
+      backend safirmonitoring_api-back
+          mode http
+          balance leastconn
+          option forwardfor
+          http-check send meth GET uri /docs
+          http-check expect status 200
+          server {{ sm_ct }} {{ safirmonitoring_container_ip }}:{{ safirmonitoring_api_port }} check port {{ safirmonitoring_api_port }} inter 12000 rise 3 fall 3
+
+- name: Reload HAProxy
+  ansible.builtin.service:
+    name: haproxy
+    state: reloaded

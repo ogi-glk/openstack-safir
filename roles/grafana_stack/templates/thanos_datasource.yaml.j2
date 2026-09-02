@@ -1,0 +1,12 @@
+apiVersion: 1
+
+datasources:
+  - name: Thanos-Prometheus
+    type: prometheus
+    access: proxy
+    url: {{ thanos_querier_url }}
+    isDefault: true
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+    editable: true

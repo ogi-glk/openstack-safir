@@ -1,0 +1,8 @@
+cluster.name: {{ opensearch_cluster_name }}
+node.name: {{ opensearch_node_name }}
+network.host: {{ opensearch_container_ip }}
+http.port: {{ opensearch_http_port }}
+discovery.type: single-node
+
+# Internal network isolation - TLS/Security plugin disabled
+plugins.security.disabled: true

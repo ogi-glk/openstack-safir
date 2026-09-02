@@ -1,0 +1,51 @@
+import httpx
+from fastapi import FastAPI, Request, Response
+
+app = FastAPI(title="Grafana Keystone Auth Proxy")
+KEYSTONE_URL = "{{ keystone_auth_url }}"
+GRAFANA_BACKEND = "http://127.0.0.1:{{ grafana_backend_port }}"
+
+async def validate_keystone_token(token: str):
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            res = await client.get(
+                f"{KEYSTONE_URL}/auth/tokens",
+                headers={"X-Auth-Token": token, "X-Subject-Token": token}
+            )
+            if res.status_code == 200:
+                data = res.json().get("token", {})
+                user_name = data.get("user", {}).get("name", "openstack_user")
+                roles = [r.get("name") for r in data.get("roles", [])]
+                grafana_role = "Admin" if "admin" in roles else "Editor"
+                return user_name, grafana_role
+    except Exception:
+        pass
+    return None, None
+
+@app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"])
+async def proxy_handler(request: Request, path: str):
+    token = request.headers.get("x-auth-token")
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    
+    if token:
+        user_name, grafana_role = await validate_keystone_token(token)
+        if user_name:
+            headers["X-WEBAUTH-USER"] = user_name
+            headers["X-WEBAUTH-ROLE"] = grafana_role
+
+    target_url = f"{GRAFANA_BACKEND}/{path}"
+    query = str(request.query_params)
+    if query:
+        target_url += f"?{query}"
+
+    body = await request.body()
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        res = await client.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=body,
+            cookies=request.cookies
+        )
+        return Response(content=res.content, status_code=res.status_code, headers=dict(res.headers))

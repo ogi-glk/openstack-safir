@@ -1,0 +1,38 @@
+---
+# ==============================================================================
+# Skyline Dashboard Role - Default Variables
+# ==============================================================================
+
+# Web & API Ports
+skyline_web_port: 9999
+skyline_apiserver_port: 28000
+skyline_bind_address: "0.0.0.0"
+
+# OpenStack Keystone Authentication Endpoint
+skyline_keystone_url: "{{ keystone_auth_url | default('https://10.8.135.9:5000/v3') }}"
+skyline_default_region: "RegionOne"
+skyline_region_name: "RegionOne"
+skyline_user_default_domain: "Default"
+skyline_interface: "public"
+skyline_insecure: true
+skyline_ssl_verify: false
+
+# System Service / Admin Credentials for Session & Discovery
+skyline_admin_user: "admin"
+skyline_admin_password: "{{ openstack_admin_password | default('a93b97960d21d3555d62c') }}"
+skyline_admin_project: "admin"
+skyline_admin_domain: "Default"
+skyline_base_domains:
+  - "Default"
+  - "default"
+
+# Local Storage, SQLite DB & Virtualenv Directories
+skyline_config_dir: "/etc/skyline"
+skyline_data_dir: "/var/lib/skyline"
+skyline_log_dir: "/var/log/skyline"
+skyline_console_dir: "/var/www/skyline"
+skyline_venv_dir: "{{ skyline_venv_path | default('/opt/skyline/venv') }}"
+skyline_db_url: "sqlite:////var/lib/skyline/skyline.db"
+
+# Session Secret Key
+skyline_secret_key: "SafirSkylineSecretKeySuperSecure2026!"

@@ -1,0 +1,34 @@
+[Unit]
+Description=Safir Monitoring API Service
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=notify
+WorkingDirectory=/opt/safir_monitoring
+
+Environment="oslo_config_file=/etc/safirmonitoring/safirmonitoring.conf"
+Environment="config_base_path=/etc/safirmonitoring/"
+Environment="PATH=/opt/safir_monitoring/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="VIRTUAL_ENV=/opt/safir_monitoring/venv"
+
+ExecStart=/opt/safir_monitoring/venv/bin/gunicorn \
+    -k uvicorn.workers.UvicornWorker \
+    --workers 5 \
+    --bind 0.0.0.0:9768 \
+    --timeout 120 \
+    --access-logfile /var/log/safir_monitoring/safir_monitoring-access.log \
+    --error-logfile /var/log/safir_monitoring/safir_monitoring-error.log \
+    "safir_monitoring.main:asgi_app()" \
+    --env oslo_config_file=/etc/safirmonitoring/safirmonitoring.conf \
+    --env config_base_path=/etc/safirmonitoring/
+
+ExecReload=/usr/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=300
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

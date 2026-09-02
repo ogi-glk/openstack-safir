@@ -1,0 +1,11 @@
+[Unit]
+Description=Safir Cloud Watcher Processor Service
+After=syslog.target network.target
+
+[Service]
+Type=simple
+User=safir_cloud_watcher
+ExecStart=/usr/bin/safircloudwatcher-processor --logfile /var/log/safir_cloud_watcher/processor.log --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
+
+[Install]
+WantedBy=multi-user.target

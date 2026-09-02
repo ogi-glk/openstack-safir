@@ -1,0 +1,13 @@
+---
+- 'compute.instance.exists'
+- 'backup.exists'
+- 'volume.exists'
+- 'snapshot.exists'
+- 'capacity.backend'
+- 'capacity.pool'
+- 'floatingip.create.start'
+- 'floatingip.create.end'
+- 'port.create.start'
+- 'port.create.end'
+- 'port.delete.start'
+- 'port.delet.end' 

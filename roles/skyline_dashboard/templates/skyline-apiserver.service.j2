@@ -1,0 +1,16 @@
+[Unit]
+Description=OpenStack Skyline API Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory={{ skyline_config_dir }}
+ExecStart={{ skyline_venv_dir }}/bin/gunicorn -w 4 -k uvicorn.workers.UvicornWorker -b 127.0.0.1:{{ skyline_apiserver_port }} --access-logfile {{ skyline_log_dir }}/access.log --error-logfile {{ skyline_log_dir }}/error.log skyline_apiserver.main:app
+Restart=always
+RestartSec=5s
+Environment="PYTHONPATH={{ skyline_venv_dir }}/lib/python3.12/site-packages:{{ skyline_venv_dir }}/lib/python3.10/site-packages"
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Safir Monitoring VM Metrics Collector
+After=network.target mysql.service
+
+[Service]
+Type=oneshot
+ExecStart=/openstack/venvs/safirmonitoring-31.2.0/bin/python3 -m safir_monitoring.collector.metrics_collector --config-file /etc/safirmonitoring/safirmonitoring.conf
+TimeoutSec=300
+
+[Install]
+WantedBy=multi-user.target
