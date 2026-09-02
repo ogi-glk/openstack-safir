@@ -59,6 +59,38 @@
     state: present
   ignore_errors: yes
 
+- name: 4.1 Copy Türk Telekom Skyline Console Wheel Package
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../packages/skyline/"
+    dest: "/opt/skyline/packages/"
+    mode: "0755"
+
+- name: 4.2 Install Türk Telekom Skyline Console UI Package into Virtualenv
+  ansible.builtin.command:
+    cmd: "{{ skyline_venv_dir }}/bin/pip install --no-deps /opt/skyline/packages/skyline_console-7.1.0.dev1018-py3-none-any.whl"
+  changed_when: true
+
+- name: 4.3 Populate /var/www/skyline with Türk Telekom Web UI Static Assets
+  ansible.builtin.shell: |
+    python3 -c "
+    import os, shutil, glob
+    static_dirs = glob.glob('{{ skyline_venv_dir }}/lib/python3*/site-packages/skyline_console/static')
+    if static_dirs and os.path.exists(static_dirs[0]):
+        src = static_dirs[0]
+        dst = '{{ skyline_console_dir }}'
+        os.makedirs(dst, exist_ok=True)
+        for item in os.listdir(src):
+            s = os.path.join(src, item)
+            d = os.path.join(dst, item)
+            if os.path.isdir(s):
+                if os.path.exists(d): shutil.rmtree(d)
+                shutil.copytree(s, d)
+            else:
+                shutil.copy2(s, d)
+        print('[+] Türk Telekom Skyline UI deployed to ' + dst)
+    "
+  changed_when: true
+
 - name: 5. Deploy Skyline Configuration (skyline.yaml)
   ansible.builtin.template:
     src: skyline.yaml.j2
