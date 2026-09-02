@@ -84,6 +84,47 @@
       Ensure Keystone and HAProxy VIP services are up and running.
     success_msg: "[PASS] Keystone API is reachable and healthy at {{ keystone_auth_url }}."
 
-- name: Summary of Pre-flight Validation
+- name: 8. Dynamically Discover OpenStack Core Infrastructure Container IPs
+  ansible.builtin.shell: |
+    python3 -c "
+    import subprocess, re, json
+
+    out = subprocess.check_output(['lxc-ls', '-f']).decode()
+    galera_ip = ''
+    rabbit_ip = ''
+    utility_ct = ''
+
+    for line in out.splitlines():
+        if 'galera' in line:
+            ips = re.findall(r'172\.29\.\d+\.\d+', line)
+            if ips: galera_ip = ips[0]
+        elif 'rabbit' in line:
+            ips = re.findall(r'172\.29\.\d+\.\d+', line)
+            if ips: rabbit_ip = ips[0]
+        elif 'utility' in line:
+            utility_ct = line.split()[0]
+
+    print(json.dumps({'galera_ip': galera_ip, 'rabbit_ip': rabbit_ip, 'utility_ct': utility_ct}))
+    "
+  register: discovery_raw
+  changed_when: false
+
+- name: 9. Set Dynamic Infrastructure Facts Across All Plays
+  ansible.builtin.set_fact:
+    mariadb_host: "{{ (discovery_raw.stdout | from_json).galera_ip | default(mariadb_host, true) }}"
+    rabbitmq_host: "{{ (discovery_raw.stdout | from_json).rabbit_ip | default(rabbitmq_host, true) }}"
+    openstack_public_ip: "{{ ansible_host }}"
+  delegate_to: "{{ item }}"
+  delegate_facts: true
+  loop: "{{ play_hosts }}"
+
+- name: Summary of Pre-flight Validation & Discovered Infrastructure
   ansible.builtin.debug:
-    msg: ">>> All OpenStack AIO baseline prerequisites are SATISFIED! Proceeding with Safir Stack installation. <<<"
+    msg: |
+      ==============================================================================
+      >>> PRE-FLIGHT VALIDATION & DYNAMIC AUTO-DISCOVERY COMPLETE <<<
+      * Target Host Public IP:    {{ openstack_public_ip }}
+      * Discovered Galera Host:   {{ mariadb_host }}
+      * Discovered RabbitMQ Host: {{ rabbitmq_host }}
+      * Keystone Identity URL:    {{ keystone_auth_url }}
+      ==============================================================================
