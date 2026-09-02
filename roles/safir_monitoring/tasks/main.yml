@@ -220,6 +220,8 @@
 
       [Service]
       Type=simple
+      Environment="oslo_config_file=/etc/safirmonitoring/safirmonitoring.conf"
+      Environment="OSLO_CONFIG_FILE=/etc/safirmonitoring/safirmonitoring.conf"
       ExecStart=/openstack/venvs/safirmonitoring-31.2.0/bin/gunicorn -c /etc/safirmonitoring/gunicorn.py safir_monitoring.main:asgi_app
       Restart=always
       RestartSec=3
