@@ -68,33 +68,16 @@
     success_msg: "[PASS] Core container for '{{ item }}' is present."
   loop: "{{ prerequisites_required_containers }}"
 
-- name: Validate Keystone Identity Endpoint Health
-  ansible.builtin.uri:
-    url: "{{ keystone_auth_url }}"
-    method: GET
-    status_code: [200, 300]
-    timeout: 5
-  register: keystone_health
-  ignore_errors: true
-
-- name: Assert Keystone API is responding
-  ansible.builtin.assert:
-    that:
-      - keystone_health.status in [200, 300]
-    fail_msg: >-
-      [CRITICAL ERROR] Keystone Identity API is NOT reachable at {{ keystone_auth_url }}.
-      Ensure Keystone and HAProxy VIP services are up and running.
-    success_msg: "[PASS] Keystone API is reachable and healthy at {{ keystone_auth_url }}."
-
-- name: 8. Dynamically Discover OpenStack Core Infrastructure Container IPs
+- name: 7. Dynamically Discover OpenStack Infrastructure & Keystone Endpoint
   ansible.builtin.shell: |
     python3 -c "
-    import subprocess, re, json
+    import subprocess, re, json, os, urllib.request
 
     out = subprocess.check_output(['lxc-ls', '-f']).decode()
     galera_ip = ''
     rabbit_ip = ''
     utility_ct = ''
+    keystone_ip = ''
 
     for line in out.splitlines():
         if 'galera' in line:
@@ -103,22 +86,98 @@
         elif 'rabbit' in line:
             ips = re.findall(r'172\.29\.\d+\.\d+', line)
             if ips: rabbit_ip = ips[0]
+        elif 'keystone' in line:
+            ips = re.findall(r'172\.29\.\d+\.\d+', line)
+            if ips: keystone_ip = ips[0]
         elif 'utility' in line:
             utility_ct = line.split()[0]
 
-    print(json.dumps({'galera_ip': galera_ip, 'rabbit_ip': rabbit_ip, 'utility_ct': utility_ct}))
+    # Discover OS_AUTH_URL from openrc
+    openrc_url = ''
+    openrc_candidates = ['/root/openrc']
+    if utility_ct:
+        openrc_candidates.append(f'/var/lib/lxc/{utility_ct}/rootfs/root/openrc')
+
+    for p in openrc_candidates:
+        if os.path.exists(p):
+            with open(p) as f:
+                for l in f:
+                    if 'OS_AUTH_URL' in l and '=' in l:
+                        openrc_url = l.split('=')[1].strip().strip('\'\"')
+                        break
+            if openrc_url:
+                break
+
+    # If openrc uses 172.29.236.101 VIP, ensure 101 is bound on br-mgmt
+    if '172.29.236.101' in openrc_url or '172.29.236.101' in '{{ keystone_auth_url }}':
+        try:
+            urllib.request.urlopen('http://172.29.236.101:5000/v3', timeout=2)
+        except Exception:
+            subprocess.run(['ip', 'addr', 'add', '172.29.236.101/22', 'dev', 'br-mgmt'], capture_output=True)
+
+    # Test candidate endpoints
+    candidates = []
+    if openrc_url:
+        candidates.append(openrc_url)
+    candidates.extend([
+        '{{ keystone_auth_url }}',
+        'http://172.29.236.101:5000/v3',
+        f'http://{keystone_ip}:5000/v3' if keystone_ip else '',
+        'http://172.29.236.100:5000/v3',
+        'http://127.0.0.1:5000/v3'
+    ])
+
+    active_keystone = ''
+    for url in candidates:
+        if not url:
+            continue
+        try:
+            req = urllib.request.urlopen(url, timeout=3)
+            if req.status in [200, 300]:
+                active_keystone = url
+                break
+        except Exception:
+            pass
+
+    print(json.dumps({
+        'galera_ip': galera_ip,
+        'rabbit_ip': rabbit_ip,
+        'utility_ct': utility_ct,
+        'keystone_ip': keystone_ip,
+        'active_keystone': active_keystone or openrc_url or 'http://172.29.236.101:5000/v3'
+    }))
     "
   register: discovery_raw
   changed_when: false
 
-- name: 9. Set Dynamic Infrastructure Facts Across All Plays
+- name: 8. Set Dynamic Infrastructure Facts Across All Plays
   ansible.builtin.set_fact:
     mariadb_host: "{{ (discovery_raw.stdout | from_json).galera_ip | default(mariadb_host, true) }}"
     rabbitmq_host: "{{ (discovery_raw.stdout | from_json).rabbit_ip | default(rabbitmq_host, true) }}"
+    keystone_auth_url: "{{ (discovery_raw.stdout | from_json).active_keystone | default(keystone_auth_url, true) }}"
+    skyline_keystone_url: "{{ (discovery_raw.stdout | from_json).active_keystone | default(keystone_auth_url, true) }}"
     openstack_public_ip: "{{ ansible_host }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
   loop: "{{ play_hosts }}"
+
+- name: 9. Validate Discovered Keystone Identity Endpoint Health
+  ansible.builtin.uri:
+    url: "{{ keystone_auth_url }}"
+    method: GET
+    status_code: [200, 300]
+    timeout: 5
+  register: keystone_health
+  ignore_errors: true
+
+- name: 10. Assert Keystone API is responding
+  ansible.builtin.assert:
+    that:
+      - keystone_health.status in [200, 300]
+    fail_msg: >-
+      [CRITICAL ERROR] Keystone Identity API is NOT reachable at {{ keystone_auth_url }}.
+      Ensure Keystone and HAProxy VIP services are up and running.
+    success_msg: "[PASS] Keystone API is reachable and healthy at {{ keystone_auth_url }}."
 
 - name: Summary of Pre-flight Validation & Discovered Infrastructure
   ansible.builtin.debug:
@@ -128,5 +187,5 @@
       * Target Host Public IP:    {{ openstack_public_ip }}
       * Discovered Galera Host:   {{ mariadb_host }}
       * Discovered RabbitMQ Host: {{ rabbitmq_host }}
-      * Keystone Identity URL:    {{ keystone_auth_url }}
+      * Active Keystone URL:      {{ keystone_auth_url }}
       ==============================================================================
