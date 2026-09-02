@@ -255,7 +255,7 @@
 
         [Service]
         Type=simple
-        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/safir-cloud-watcher-event-manager --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
+        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/safircloudwatcher-event-manager --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
         Restart=always
         RestartSec=3
 
@@ -270,7 +270,7 @@
 
         [Service]
         Type=simple
-        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/safir-cloud-watcher-processor --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
+        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/safircloudwatcher-processor --config-file /etc/safir_cloud_watcher/safir_cloud_watcher.conf
         Restart=always
         RestartSec=3
 
