@@ -181,31 +181,63 @@
       reuse_port = {{ safirmonitoring_gunicorn_reuse_port }}
     mode: "0644"
 
-- name: Configure Thanos Querier endpoint in safirmonitoring.conf
+- name: Find Galera / MariaDB container
+  ansible.builtin.set_fact:
+    galera_ct: "{{ (lxc_list.stdout_lines | select('search', 'galera') | list | first) | default('') }}"
+
+- name: Create SafirMonitoring database and user in MariaDB
   ansible.builtin.command:
-    cmd: |
-      lxc-attach -n {{ sm_ct }} -- python3 -c '
-      import os, re
-      conf_path = "/etc/safirmonitoring/safirmonitoring.conf"
-      content = ""
-      if os.path.exists(conf_path):
-          with open(conf_path, "r") as f:
-              content = f.read()
-      
-      thanos_block = """[thanos]
-      querier_endpoint = "{{ thanos_querier_url }}"
-      rules_dir = /var/lib/thanos/rules"""
+    cmd: >
+      lxc-attach -n {{ galera_ct }} -- mysql -e
+      "CREATE DATABASE IF NOT EXISTS {{ safirmonitoring_db_name }} CHARACTER SET utf8;
+       CREATE USER IF NOT EXISTS '{{ safirmonitoring_db_user }}'@'%' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
+       GRANT ALL PRIVILEGES ON {{ safirmonitoring_db_name }}.* TO '{{ safirmonitoring_db_user }}'@'%';
+       FLUSH PRIVILEGES;"
+  when: galera_ct != ''
+  changed_when: false
+  failed_when: false
 
-      if "[thanos]" in content:
-          content = re.sub(r"\[thanos\][\s\S]*?(?=\n\[|$)", thanos_block, content)
-      else:
-          content += "\n" + thanos_block + "\n"
+- name: Deploy SafirMonitoring main configuration file
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring/safirmonitoring.conf"
+    content: |
+      [DEFAULT]
+      debug = true
 
-      with open(conf_path, "w") as f:
-          f.write(content)
-      print("[+] Updated thanos querier endpoint")
-      '
-  changed_when: true
+      [database]
+      connection = mysql+aiomysql://{{ safirmonitoring_db_user }}:{{ safirmonitoring_db_password }}@{{ mariadb_host }}:3306/{{ safirmonitoring_db_name }}?charset=utf8
+      db_debug = false
+
+      [api_server]
+      host = 0.0.0.0
+      port = {{ safirmonitoring_api_port }}
+      workers = {{ safirmonitoring_gunicorn_workers }}
+      log_level = info
+
+      [thanos]
+      querier_endpoint = {{ thanos_querier_url }}
+      rules_dir = /var/lib/thanos/rules
+
+      [opensearch]
+      url = http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}
+      username = admin
+      password = {{ opensearch_admin_password }}
+    mode: "0640"
+
+- name: Initialize SafirMonitoring database tables
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ sm_ct }} -- bash -c
+      "oslo_config_file=/etc/safirmonitoring/safirmonitoring.conf config_base_path=/etc/safirmonitoring /openstack/venvs/safirmonitoring-31.2.0/bin/python3 -c '
+      import pymysql
+      from safir_monitoring.db.models import metadata
+      from sqlalchemy import create_engine
+      engine = create_engine(\"mysql+pymysql://{{ safirmonitoring_db_user }}:{{ safirmonitoring_db_password }}@{{ mariadb_host }}:3306/{{ safirmonitoring_db_name }}?charset=utf8\")
+      metadata.create_all(engine)
+      print(\"[+] Database tables initialized\")
+      '"
+  changed_when: false
+  failed_when: false
 
 # ------------------------------------------------------------------------------
 # 4. Service Units & Daemons Management
