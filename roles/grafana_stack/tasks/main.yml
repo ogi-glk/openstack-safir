@@ -106,6 +106,7 @@
   ansible.builtin.copy:
     dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/resolv.conf"
     content: |
+      nameserver 10.0.3.1
       nameserver 8.8.8.8
       nameserver 1.1.1.1
     mode: "0644"
@@ -116,6 +117,7 @@
       lxc-attach -n {{ grafana_container_name }} -- bash -c
       "ip link set eth0 up && ip link set eth1 up 2>/dev/null || true;
        systemctl enable systemd-networkd && systemctl restart systemd-networkd 2>/dev/null || true;
+       dhclient -4 eth1 2>/dev/null || true;
        ip addr add {{ grafana_container_ip }}/22 dev eth0 2>/dev/null || true"
   changed_when: false
 
@@ -130,7 +132,7 @@
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ grafana_container_name }} -- bash -c
-      "echo 'nameserver 8.8.8.8' > /etc/resolv.conf &&
+      "echo -e 'nameserver 10.0.3.1\nnameserver 8.8.8.8' > /etc/resolv.conf &&
        apt-get update -qq && apt-get install -y -qq curl gnupg2 apt-transport-https python3-fastapi python3-uvicorn python3-httpx python3-requests &&
        mkdir -p /etc/apt/keyrings/ &&
        curl -fsSL {{ grafana_repo_gpg_url }} | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg &&
