@@ -140,7 +140,8 @@
     cmd: >
       lxc-attach -n {{ grafana_container_name }} -- bash -c
       "mkdir -p /etc/apt/keyrings/ &&
-       curl -fsSL --retry 3 --connect-timeout 10 {{ grafana_repo_gpg_url }} | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg &&
+       rm -f /etc/apt/keyrings/grafana.gpg &&
+       curl -fsSL --retry 3 --connect-timeout 10 {{ grafana_repo_gpg_url }} | gpg --dearmor --yes -o /etc/apt/keyrings/grafana.gpg &&
        echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] {{ grafana_repo_url }} stable main' > /etc/apt/sources.list.d/grafana.list &&
        apt-get update -qq &&
        apt-get install -y -qq grafana"
