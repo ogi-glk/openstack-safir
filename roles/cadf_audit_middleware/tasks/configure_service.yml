@@ -1,0 +1,94 @@
+﻿---
+# ==============================================================================
+# Configure CADF Audit for a single OpenStack service
+# ==============================================================================
+
+- name: "Find container for {{ service_item.name }}"
+  ansible.builtin.set_fact:
+    matching_ct: "{{ lxc_full_list.stdout_lines | select('search', service_item.container_pattern) | first }}"
+
+- name: "Audit Map | Generate {{ service_item.audit_map_path }} for {{ service_item.name }}"
+  vars:
+    map_content: |
+      [DEFAULT]
+      target_endpoint_type = {{ service_item.endpoint_type }}
+
+      [path_keywords]
+      {% for k, v in service_item.keywords.items() %}
+      {{ k }} = {{ v }}
+      {% endfor %}
+
+      [service_endpoints]
+      {{ service_item.endpoint_type }} = service/{{ service_item.endpoint_type }}
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ matching_ct }}/rootfs{{ service_item.audit_map_path }}"
+    content: "{{ map_content }}"
+    mode: "0644"
+
+- name: "Paste Pipeline | Inject [filter:audit] and update pipeline in {{ service_item.name }}"
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ matching_ct }} -- python3 -c '
+      import os, re
+      paste_path = "{{ service_item.paste_path }}"
+      if not os.path.exists(paste_path):
+          exit(0)
+      
+      with open(paste_path, "r") as f:
+          content = f.read()
+      
+      # 1. Add [filter:audit] block if missing
+      if "[filter:audit]" not in content:
+          content += "\n\n[filter:audit]\npaste.filter_factory = keystonemiddleware.audit:filter_factory\naudit_map_file = {{ service_item.audit_map_path }}\nignore_req_list = {{ cadf_ignore_req_list }}\n"
+      
+      # 2. Inject audit into pipeline lines
+      new_lines = []
+      for line in content.splitlines():
+          if ("keystone" in line or "pipeline =" in line) and ("keystonecontext" in line or "context" in line) and "audit" not in line and not line.strip().startswith("["):
+              if "keystonecontext" in line:
+                  line = line.replace("keystonecontext", "keystonecontext audit")
+              elif "context" in line:
+                  line = line.replace("context", "context audit")
+          new_lines.append(line)
+      
+      with open(paste_path, "w") as f:
+          f.write("\n".join(new_lines) + "\n")
+      print("[+] Updated paste config for {{ service_item.name }}")
+      '
+  changed_when: true
+
+- name: "Conf Settings | Enable oslo_messaging_notifications and proxy parsing for {{ service_item.name }}"
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ matching_ct }} -- python3 -c '
+      import configparser, os
+      conf_path = "{{ service_item.conf_path }}"
+      if not os.path.exists(conf_path):
+          exit(0)
+      
+      cfg = configparser.ConfigParser()
+      cfg.read(conf_path)
+      
+      if not cfg.has_section("oslo_middleware"):
+          cfg.add_section("oslo_middleware")
+      cfg["oslo_middleware"]["enable_proxy_headers_parsing"] = "true"
+      
+      if not cfg.has_section("oslo_messaging_notifications"):
+          cfg.add_section("oslo_messaging_notifications")
+      cfg["oslo_messaging_notifications"]["driver"] = "messagingv2"
+      cfg["oslo_messaging_notifications"]["topics"] = "notifications"
+      
+      with open(conf_path, "w") as f:
+          cfg.write(f)
+      print("[+] Updated conf file for {{ service_item.name }}")
+      '
+  changed_when: true
+
+- name: "Restart | Restart API service units for {{ service_item.name }}"
+  ansible.builtin.command:
+    cmd: "lxc-attach -n {{ matching_ct }} -- systemctl restart {{ item_unit }}"
+  loop: "{{ service_item.service_units }}"
+  loop_control:
+    loop_var: item_unit
+  failed_when: false
+  changed_when: true

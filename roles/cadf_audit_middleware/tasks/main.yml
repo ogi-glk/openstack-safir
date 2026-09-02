@@ -1,4 +1,4 @@
----
+﻿---
 # ==============================================================================
 # OpenStack CADF Audit Middleware Automation Tasks
 # ==============================================================================
@@ -13,133 +13,47 @@
 # Core Services Loop (Nova, Cinder, Glance, Neutron, Heat)
 # ------------------------------------------------------------------------------
 - name: Configure CADF Audit for OpenStack Core API Services
-  vars:
-    matching_ct: "{{ lxc_full_list.stdout_lines | select('search', item.container_pattern) | first }}"
-  block:
-    - name: "Audit Map | Generate {{ item.audit_map_path }} for {{ item.name }}"
-      vars:
-        map_content: |
-          [DEFAULT]
-          target_endpoint_type = {{ item.endpoint_type }}
-
-          [path_keywords]
-          {% for k, v in item.keywords.items() %}
-          {{ k }} = {{ v }}
-          {% endfor %}
-
-          [service_endpoints]
-          {{ item.endpoint_type }} = service/{{ item.endpoint_type }}
-      ansible.builtin.copy:
-        dest: "/var/lib/lxc/{{ matching_ct }}/rootfs{{ item.audit_map_path }}"
-        content: "{{ map_content }}"
-        mode: "0644"
-
-    - name: "Paste Pipeline | Inject [filter:audit] and update pipeline in {{ item.name }}"
-      ansible.builtin.command:
-        cmd: >
-          lxc-attach -n {{ matching_ct }} -- python3 -c '
-          import os, re
-          paste_path = "{{ item.paste_path }}"
-          if not os.path.exists(paste_path):
-              exit(0)
-          
-          with open(paste_path, "r") as f:
-              content = f.read()
-          
-          # 1. Add [filter:audit] block if missing
-          if "[filter:audit]" not in content:
-              content += "\n\n[filter:audit]\npaste.filter_factory = keystonemiddleware.audit:filter_factory\naudit_map_file = {{ item.audit_map_path }}\nignore_req_list = {{ cadf_ignore_req_list }}\n"
-          
-          # 2. Inject audit into pipeline lines
-          new_lines = []
-          for line in content.splitlines():
-              # Handle keystone pipelines
-              if ("keystone" in line or "pipeline =" in line) and ("keystonecontext" in line or "context" in line) and "audit" not in line and not line.strip().startswith("["):
-                  if "keystonecontext" in line:
-                      line = line.replace("keystonecontext", "keystonecontext audit")
-                  elif "context" in line:
-                      line = line.replace("context", "context audit")
-              new_lines.append(line)
-          
-          with open(paste_path, "w") as f:
-              f.write("\n".join(new_lines) + "\n")
-          print("[+] Updated paste config for {{ item.name }}")
-          '
-      changed_when: true
-
-    - name: "Conf Settings | Enable oslo_messaging_notifications and proxy parsing for {{ item.name }}"
-      ansible.builtin.command:
-        cmd: >
-          lxc-attach -n {{ matching_ct }} -- python3 -c '
-          import configparser, os
-          conf_path = "{{ item.conf_path }}"
-          if not os.path.exists(conf_path):
-              exit(0)
-          
-          cfg = configparser.ConfigParser()
-          cfg.read(conf_path)
-          
-          if not cfg.has_section("oslo_middleware"):
-              cfg.add_section("oslo_middleware")
-          cfg["oslo_middleware"]["enable_proxy_headers_parsing"] = "true"
-          
-          if not cfg.has_section("oslo_messaging_notifications"):
-              cfg.add_section("oslo_messaging_notifications")
-          cfg["oslo_messaging_notifications"]["driver"] = "messagingv2"
-          cfg["oslo_messaging_notifications"]["topics"] = "notifications"
-          
-          with open(conf_path, "w") as f:
-              cfg.write(f)
-          print("[+] Updated conf file for {{ item.name }}")
-          '
-      changed_when: true
-
-    - name: "Restart | Restart API service units for {{ item.name }}"
-      ansible.builtin.command:
-        cmd: "lxc-attach -n {{ matching_ct }} -- systemctl restart {{ item_unit }}"
-      loop: "{{ item.service_units }}"
-      loop_control:
-        loop_var: item_unit
-      failed_when: false
-      changed_when: true
+  ansible.builtin.include_tasks: configure_service.yml
   loop: "{{ cadf_audit_services }}"
+  loop_control:
+    loop_var: service_item
 
 # ------------------------------------------------------------------------------
 # Keystone Identity Service CADF Configuration
 # ------------------------------------------------------------------------------
-- name: Configure Keystone Native CADF Notification Format
+- name: Update keystone.conf with CADF notification parameters
   vars:
     keystone_ct: "{{ lxc_full_list.stdout_lines | select('search', 'keystone-container') | first }}"
-  block:
-    - name: Update keystone.conf with CADF notification parameters
-      ansible.builtin.command:
-        cmd: >
-          lxc-attach -n {{ keystone_ct }} -- python3 -c '
-          conf_path = "/etc/keystone/keystone.conf"
-          with open(conf_path, "r") as f:
-              content = f.read()
-          
-          if "notification_format = cadf" not in content:
-              content = content.replace("[DEFAULT]", "[DEFAULT]\nnotification_format = cadf\nnotification_opt_out = identity.authenticate.pending")
-          
-          if "[oslo_messaging_notifications]" not in content:
-              content += "\n[oslo_messaging_notifications]\ndriver = messagingv2\ntopics = notifications\n"
-          
-          if "[oslo_middleware]" not in content:
-              content += "\n[oslo_middleware]\nenable_proxy_headers_parsing = true\n"
-          
-          with open(conf_path, "w") as f:
-              f.write(content)
-          print("[+] Keystone CADF configuration complete")
-          '
-      changed_when: true
+  ansible.builtin.command:
+    cmd: >
+      lxc-attach -n {{ keystone_ct }} -- python3 -c '
+      conf_path = "/etc/keystone/keystone.conf"
+      with open(conf_path, "r") as f:
+          content = f.read()
+      
+      if "notification_format = cadf" not in content:
+          content = content.replace("[DEFAULT]", "[DEFAULT]\nnotification_format = cadf\nnotification_opt_out = identity.authenticate.pending")
+      
+      if "[oslo_messaging_notifications]" not in content:
+          content += "\n[oslo_messaging_notifications]\ndriver = messagingv2\ntopics = notifications\n"
+      
+      if "[oslo_middleware]" not in content:
+          content += "\n[oslo_middleware]\nenable_proxy_headers_parsing = true\n"
+      
+      with open(conf_path, "w") as f:
+          f.write(content)
+      print("[+] Keystone CADF configuration complete")
+      '
+  changed_when: true
 
-    - name: Restart Keystone web server and WSGI services
-      ansible.builtin.command:
-        cmd: "lxc-attach -n {{ keystone_ct }} -- systemctl restart {{ item }}"
-      loop:
-        - "apache2"
-        - "uwsgi"
-        - "keystone-wsgi-public"
-      failed_when: false
-      changed_when: true
+- name: Restart Keystone web server and WSGI services
+  vars:
+    keystone_ct: "{{ lxc_full_list.stdout_lines | select('search', 'keystone-container') | first }}"
+  ansible.builtin.command:
+    cmd: "lxc-attach -n {{ keystone_ct }} -- systemctl restart {{ item }}"
+  loop:
+    - "apache2"
+    - "uwsgi"
+    - "keystone-wsgi-public"
+  failed_when: false
+  changed_when: true
