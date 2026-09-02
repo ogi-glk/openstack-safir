@@ -92,19 +92,24 @@
 
 - name: 4.4 Enable All Türk Telekom Safir Bulut Custom Menus (Bypass Endpoint Filter)
   ansible.builtin.shell: |
-    python3 -c "
+    python3 - << 'EOF'
     import glob
     for f in glob.glob('{{ skyline_console_dir }}/main.bundle.*.js'):
-        with open(f, 'r') as fp: content = fp.read()
+        with open(f, 'r') as fp:
+            content = fp.read()
         content = content.replace('checkEndpoint(e){return!e||!!this.endpoints[e]}', 'checkEndpoint(e){return true}')
-        with open(f, 'w') as fp: fp.write(content)
+        with open(f, 'w') as fp:
+            fp.write(content)
         print('[+] Main bundle patched:', f)
+
     for f in glob.glob('{{ skyline_console_dir }}/basic.bundle.*.js'):
-        with open(f, 'r') as fp: content = fp.read()
-        content = content.replace('checkItemEndpoints\",e=>this.rootStore.checkEndpoint(e)', 'checkItemEndpoints\",e=>true')
-        with open(f, 'w') as fp: fp.write(content)
+        with open(f, 'r') as fp:
+            content = fp.read()
+        content = content.replace('checkItemEndpoints",e=>this.rootStore.checkEndpoint(e)', 'checkItemEndpoints",e=>true')
+        with open(f, 'w') as fp:
+            fp.write(content)
         print('[+] Basic bundle patched:', f)
-    "
+    EOF
   changed_when: true
 
 - name: 5. Deploy Skyline Configuration (skyline.yaml)
