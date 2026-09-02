@@ -8,7 +8,7 @@ openstack_management_bridge: "br-mgmt"
 openstack_nat_bridge: "lxcbr0"
 openstack_management_network_cidr: "172.29.236.0/22"
 openstack_management_vip: "172.29.236.101"
-openstack_public_ip: "10.8.135.9"
+openstack_public_ip: "10.8.130.75"
 
 # Core Infrastructure Endpoints
 keystone_auth_url: "http://172.29.236.101:5000/v3"

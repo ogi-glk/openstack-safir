@@ -55,9 +55,8 @@
       - "sqlalchemy>=1.4.0,<2.0.0"
       - alembic
       - requests
-      - skyline-apiserver
+      - "git+https://opendev.org/openstack/skyline-apiserver.git"
     state: present
-  ignore_errors: yes
 
 - name: 4.1 Copy Türk Telekom Skyline Console Wheel Package
   ansible.builtin.copy:
