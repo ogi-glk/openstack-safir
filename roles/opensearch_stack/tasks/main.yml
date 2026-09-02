@@ -109,11 +109,11 @@
   changed_when: start_res.rc == 0
   failed_when: false
 
-- name: Reload container networkd and apply static IP
+- name: Ensure management interface is UP and apply static IP inside container
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ opensearch_container_name }} -- bash -c
-      "systemctl enable systemd-networkd && systemctl restart systemd-networkd && networkctl reload && ip addr add {{ opensearch_container_ip }}/22 dev eth0 2>/dev/null || true"
+      "ip link set eth0 up && ip addr add {{ opensearch_container_ip }}/22 dev eth0 2>/dev/null || true"
   changed_when: false
 
 - name: Check if OpenSearch package is installed inside container

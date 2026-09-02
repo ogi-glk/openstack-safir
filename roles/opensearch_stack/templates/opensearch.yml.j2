@@ -1,6 +1,6 @@
 cluster.name: {{ opensearch_cluster_name }}
 node.name: {{ opensearch_node_name }}
-network.host: {{ opensearch_container_ip }}
+network.host: 0.0.0.0
 http.port: {{ opensearch_http_port }}
 discovery.type: single-node
 
