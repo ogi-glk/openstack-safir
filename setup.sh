@@ -29,9 +29,11 @@ ansible_python_interpreter=/usr/bin/python3
 EOF
 fi
 
-# 2. Export environment variables for Ansible
+# 2. Export environment variables for Ansible & create local symlink
 export ANSIBLE_CONFIG="${SCRIPT_DIR}/ansible.cfg"
 export ANSIBLE_ROLES_PATH="${SCRIPT_DIR}/roles"
+mkdir -p "${SCRIPT_DIR}/playbooks"
+ln -sfn "${SCRIPT_DIR}/roles" "${SCRIPT_DIR}/playbooks/roles"
 
 # 3. Check Ansible installation
 if ! command -v ansible-playbook &> /dev/null; then
