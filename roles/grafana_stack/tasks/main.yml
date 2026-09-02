@@ -226,12 +226,14 @@
   delay: 3
 
 - name: Configure HAProxy load balancer for Grafana (Port 3000)
+  vars:
+    ssl_suffix: "{{ (' ssl crt ' + haproxy_ssl_cert_path + ' alpn h2,http/1.1') if (haproxy_ssl_cert_path | default('') != '') else '' }}"
   ansible.builtin.blockinfile:
     path: /etc/haproxy/haproxy.cfg
     marker: "# {mark} ANSIBLE MANAGED GRAFANA PROXY"
     block: |
       frontend grafana-front-1
-          bind {{ openstack_public_ip }}:{{ grafana_backend_port }}{% if haproxy_ssl_cert_path | default('') != '' %} ssl crt {{ haproxy_ssl_cert_path }} alpn h2,http/1.1{% endif %}
+          bind {{ openstack_public_ip }}:{{ grafana_backend_port }}{{ ssl_suffix }}
           option httplog
           option forwardfor except 127.0.0.0/8
           http-request add-header X-Forwarded-Proto https

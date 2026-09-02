@@ -177,16 +177,15 @@
     status_code: 200
   register: os_api_status
   until: os_api_status.status == 200
-  retries: 15
-  delay: 3
-
 - name: Configure HAProxy frontend and backend for OpenSearch Dashboards (Port 5601)
+  vars:
+    ssl_suffix: "{{ (' ssl crt ' + haproxy_ssl_cert_path + ' alpn h2,http/1.1') if (haproxy_ssl_cert_path | default('') != '') else '' }}"
   ansible.builtin.blockinfile:
     path: /etc/haproxy/haproxy.cfg
     marker: "# {mark} ANSIBLE MANAGED OPENSEARCH DASHBOARDS PROXY"
     block: |
       frontend opensearch_dashboards-front-1
-          bind {{ openstack_public_ip }}:{{ opensearch_dashboards_port }}{% if haproxy_ssl_cert_path | default('') != '' %} ssl crt {{ haproxy_ssl_cert_path }} alpn h2,http/1.1{% endif %}
+          bind {{ openstack_public_ip }}:{{ opensearch_dashboards_port }}{{ ssl_suffix }}
           option httplog
           option forwardfor except 127.0.0.0/8
           http-request add-header X-Forwarded-Proto https

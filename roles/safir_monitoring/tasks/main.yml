@@ -217,12 +217,14 @@
 # 5. HAProxy Load Balancer Routing
 # ------------------------------------------------------------------------------
 - name: Update HAProxy configuration for SafirMonitoring
+  vars:
+    ssl_suffix: "{{ (' ssl crt ' + haproxy_ssl_cert_path + ' alpn h2,http/1.1') if (haproxy_ssl_cert_path | default('') != '') else '' }}"
   ansible.builtin.blockinfile:
     path: /etc/haproxy/haproxy.cfg
     marker: "# {mark} ANSIBLE MANAGED SAFIRMONITORING PROXY"
     block: |
       frontend safirmonitoring_api-front-1
-          bind {{ openstack_public_ip }}:{{ safirmonitoring_api_port }}{% if haproxy_ssl_cert_path | default('') != '' %} ssl crt {{ haproxy_ssl_cert_path }} alpn h2,http/1.1{% endif %}
+          bind {{ openstack_public_ip }}:{{ safirmonitoring_api_port }}{{ ssl_suffix }}
           option httplog
           option forwardfor except 127.0.0.0/8
           http-request add-header X-Forwarded-Proto https
