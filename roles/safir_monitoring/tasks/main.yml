@@ -232,7 +232,7 @@
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ sm_ct }} -- bash -c
-      "pkill -9 -f gunicorn 2>/dev/null || true; systemctl daemon-reload && systemctl enable safirmonitoring-api && systemctl restart safirmonitoring-api"
+      "systemctl daemon-reload && systemctl enable safirmonitoring-api && systemctl restart safirmonitoring-api"
   changed_when: true
 
 - name: Verify SafirMonitoring API health
