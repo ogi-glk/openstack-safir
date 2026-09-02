@@ -87,14 +87,21 @@
   ansible.builtin.command:
     cmd: "lxc-start -n {{ scw_ct }}"
   register: scw_start_res
-  changed_when: scw_start_res.rc == 0
-  failed_when: false
+- name: Ensure DNS resolution inside container
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ scw_ct }}/rootfs/etc/resolv.conf"
+    content: |
+      nameserver 8.8.8.8
+      nameserver 1.1.1.1
+    mode: "0644"
 
-- name: Reload container networkd and apply static IP
+- name: Reload container networkd, bring up interfaces and apply static IP
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ scw_ct }} -- bash -c
-      "systemctl enable systemd-networkd && systemctl restart systemd-networkd && networkctl reload && ip addr add {{ safircloudwatcher_container_ip }}/22 dev eth0 2>/dev/null || true"
+      "ip link set eth0 up && ip link set eth1 up 2>/dev/null || true;
+       systemctl enable systemd-networkd && systemctl restart systemd-networkd 2>/dev/null || true;
+       ip addr add {{ safircloudwatcher_container_ip }}/22 dev eth0 2>/dev/null || true"
   changed_when: false
 
 # ------------------------------------------------------------------------------
@@ -110,7 +117,8 @@
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ scw_ct }} -- bash -c
-      "apt-get update -qq && apt-get install -y -qq python3-venv python3-pip uwsgi uwsgi-plugin-python3 &&
+      "echo 'nameserver 8.8.8.8' > /etc/resolv.conf &&
+       apt-get update -qq && apt-get install -y -qq python3-venv python3-pip uwsgi uwsgi-plugin-python3 &&
        mkdir -p /openstack/venvs/safircloudwatcher-31.2.0 &&
        python3 -m venv /openstack/venvs/safircloudwatcher-31.2.0 &&
        /openstack/venvs/safircloudwatcher-31.2.0/bin/pip install --upgrade pip setuptools wheel &&
