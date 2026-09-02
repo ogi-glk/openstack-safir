@@ -90,6 +90,23 @@
     "
   changed_when: true
 
+- name: 4.4 Enable All Türk Telekom Safir Bulut Custom Menus (Bypass Endpoint Filter)
+  ansible.builtin.shell: |
+    python3 -c "
+    import glob
+    for f in glob.glob('{{ skyline_console_dir }}/main.bundle.*.js'):
+        with open(f, 'r') as fp: content = fp.read()
+        content = content.replace('checkEndpoint(e){return!e||!!this.endpoints[e]}', 'checkEndpoint(e){return true}')
+        with open(f, 'w') as fp: fp.write(content)
+        print('[+] Main bundle patched:', f)
+    for f in glob.glob('{{ skyline_console_dir }}/basic.bundle.*.js'):
+        with open(f, 'r') as fp: content = fp.read()
+        content = content.replace('checkItemEndpoints\",e=>this.rootStore.checkEndpoint(e)', 'checkItemEndpoints\",e=>true')
+        with open(f, 'w') as fp: fp.write(content)
+        print('[+] Basic bundle patched:', f)
+    "
+  changed_when: true
+
 - name: 5. Deploy Skyline Configuration (skyline.yaml)
   ansible.builtin.template:
     src: skyline.yaml.j2
@@ -232,10 +249,26 @@
         # 3. Safir Gocmen (Migration)
         openstack service create --name safirmigration --description "Safir Gocmen Migration Service" safirmigration 2>/dev/null || true
         openstack endpoint create --region RegionOne safirmigration public http://{{ openstack_public_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirmigration internal http://{{ safircloudwatcher_container_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirmigration admin http://{{ safircloudwatcher_container_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
 
         # 4. Safir LogAuth
         openstack service create --name safirlogauth --description "Safir LogAuth Service" safirlogauth 2>/dev/null || true
         openstack endpoint create --region RegionOne safirlogauth public http://{{ openstack_public_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirlogauth internal http://{{ safircloudwatcher_container_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirlogauth admin http://{{ safircloudwatcher_container_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+
+        # 5. Safir Marketplace
+        openstack service create --name safir_marketplace --description "Safir Marketplace Service" safir_marketplace 2>/dev/null || true
+        openstack endpoint create --region RegionOne safir_marketplace public http://{{ openstack_public_ip }}:8002 2>/dev/null || true
+
+        # 6. Billing
+        openstack service create --name billing --description "Safir Billing Service" billing 2>/dev/null || true
+        openstack endpoint create --region RegionOne billing public http://{{ openstack_public_ip }}:8001 2>/dev/null || true
+
+        # 7. API Gateway
+        openstack service create --name safir_apigateway --description "Safir API Gateway" safir_apigateway 2>/dev/null || true
+        openstack endpoint create --region RegionOne safir_apigateway public http://{{ openstack_public_ip }}:8004 2>/dev/null || true
       '
     fi
   changed_when: true
