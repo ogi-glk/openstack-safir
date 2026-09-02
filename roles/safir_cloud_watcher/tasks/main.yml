@@ -3,7 +3,7 @@
 # SafirCloudWatcher Full Lifecycle Automation Tasks
 # ==============================================================================
 
-- name: Retrieve full running LXC container inventory
+- name: Retrieve running LXC containers for SafirCloudWatcher
   ansible.builtin.command:
     cmd: lxc-ls -1
   register: lxc_list
