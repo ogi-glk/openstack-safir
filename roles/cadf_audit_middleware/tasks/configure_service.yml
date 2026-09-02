@@ -8,9 +8,14 @@
     matching_ct: "{{ lxc_full_list.stdout_lines | select('search', service_item.container_pattern) | first }}"
 
 - name: "Audit Map | Generate {{ service_item.audit_map_path }} for {{ service_item.name }}"
-  vars:
-    map_content: |
-      [DEFAULT]
+  ansible.builtin.command:
+    cmd: |
+      lxc-attach -n {{ matching_ct }} -- python3 -c '
+      import os
+      map_dir = os.path.dirname("{{ service_item.audit_map_path }}")
+      if not os.path.exists(map_dir):
+          os.makedirs(map_dir, exist_ok=True)
+      content = """[DEFAULT]
       target_endpoint_type = {{ service_item.endpoint_type }}
 
       [path_keywords]
@@ -20,10 +25,12 @@
 
       [service_endpoints]
       {{ service_item.endpoint_type }} = service/{{ service_item.endpoint_type }}
-  ansible.builtin.copy:
-    dest: "/var/lib/lxc/{{ matching_ct }}/rootfs{{ service_item.audit_map_path }}"
-    content: "{{ map_content }}"
-    mode: "0644"
+      """
+      with open("{{ service_item.audit_map_path }}", "w") as f:
+          f.write(content)
+      print("[+] Wrote {{ service_item.audit_map_path }}")
+      '
+  changed_when: true
 
 - name: "Paste Pipeline | Inject [filter:audit] and update pipeline in {{ service_item.name }}"
   ansible.builtin.command:
