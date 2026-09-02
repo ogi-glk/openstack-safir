@@ -183,7 +183,7 @@
 
 - name: Configure Thanos Querier endpoint in safirmonitoring.conf
   ansible.builtin.command:
-    cmd: >
+    cmd: |
       lxc-attach -n {{ sm_ct }} -- python3 -c '
       import os, re
       conf_path = "/etc/safirmonitoring/safirmonitoring.conf"

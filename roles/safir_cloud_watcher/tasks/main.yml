@@ -191,7 +191,7 @@
 
 - name: Update SafirCloudWatcher configuration file
   ansible.builtin.command:
-    cmd: >
+    cmd: |
       lxc-attach -n {{ scw_ct }} -- python3 -c '
       import os, re
 
