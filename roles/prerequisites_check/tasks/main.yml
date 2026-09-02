@@ -68,7 +68,7 @@
     success_msg: "[PASS] Core container for '{{ item }}' is present."
   loop: "{{ prerequisites_required_containers }}"
 
-- name: 7. Dynamically Discover OpenStack Infrastructure & Keystone Endpoint
+- name: 7. Dynamically Discover OpenStack Infrastructure, Free IPs & Keystone Endpoint
   ansible.builtin.shell: |
     python3 -c "
     import subprocess, re, json, os, urllib.request
@@ -78,6 +78,13 @@
     rabbit_ip = ''
     utility_ct = ''
     keystone_ip = ''
+
+    used_ips = set(re.findall(r'172\.29\.\d+\.\d+', out))
+    try:
+        mgmt_out = subprocess.check_output(['ip', '-4', 'a', 'show', 'br-mgmt']).decode()
+        used_ips.update(re.findall(r'172\.29\.\d+\.\d+', mgmt_out))
+    except Exception:
+        pass
 
     for line in out.splitlines():
         if 'galera' in line:
@@ -91,6 +98,20 @@
             if ips: keystone_ip = ips[0]
         elif 'utility' in line:
             utility_ct = line.split()[0]
+
+    # Dynamically allocate 4 conflict-free IPs for new containers
+    free_ips = []
+    for last_octet in range(210, 250):
+        cand = f'172.29.236.{last_octet}'
+        if cand not in used_ips:
+            free_ips.append(cand)
+            if len(free_ips) >= 4:
+                break
+
+    opensearch_ip = free_ips[0] if len(free_ips) > 0 else '172.29.236.210'
+    scw_ip = free_ips[1] if len(free_ips) > 1 else '172.29.236.211'
+    sm_ip = free_ips[2] if len(free_ips) > 2 else '172.29.236.212'
+    grafana_ip = free_ips[3] if len(free_ips) > 3 else '172.29.236.213'
 
     # Discover OS_AUTH_URL from openrc
     openrc_url = ''
@@ -139,12 +160,25 @@
         except Exception:
             pass
 
+    # Discover HAProxy SSL certificate
+    ssl_cert_path = ''
+    if os.path.exists('/etc/haproxy/ssl'):
+        for f in os.listdir('/etc/haproxy/ssl'):
+            if f.endswith('.pem'):
+                ssl_cert_path = os.path.join('/etc/haproxy/ssl', f)
+                break
+
     print(json.dumps({
         'galera_ip': galera_ip,
         'rabbit_ip': rabbit_ip,
         'utility_ct': utility_ct,
         'keystone_ip': keystone_ip,
-        'active_keystone': active_keystone or openrc_url or 'http://172.29.236.101:5000/v3'
+        'active_keystone': active_keystone or openrc_url or 'http://172.29.236.101:5000/v3',
+        'opensearch_ip': opensearch_ip,
+        'scw_ip': scw_ip,
+        'sm_ip': sm_ip,
+        'grafana_ip': grafana_ip,
+        'ssl_cert_path': ssl_cert_path
     }))
     "
   register: discovery_raw
@@ -156,6 +190,11 @@
     rabbitmq_host: "{{ (discovery_raw.stdout | from_json).rabbit_ip | default(rabbitmq_host, true) }}"
     keystone_auth_url: "{{ (discovery_raw.stdout | from_json).active_keystone | default(keystone_auth_url, true) }}"
     skyline_keystone_url: "{{ (discovery_raw.stdout | from_json).active_keystone | default(keystone_auth_url, true) }}"
+    opensearch_container_ip: "{{ (discovery_raw.stdout | from_json).opensearch_ip | default(opensearch_container_ip, true) }}"
+    safircloudwatcher_container_ip: "{{ (discovery_raw.stdout | from_json).scw_ip | default(safircloudwatcher_container_ip, true) }}"
+    safirmonitoring_container_ip: "{{ (discovery_raw.stdout | from_json).sm_ip | default(safirmonitoring_container_ip, true) }}"
+    grafana_container_ip: "{{ (discovery_raw.stdout | from_json).grafana_ip | default(grafana_container_ip, true) }}"
+    haproxy_ssl_cert_path: "{{ (discovery_raw.stdout | from_json).ssl_cert_path | default('', true) }}"
     openstack_public_ip: "{{ ansible_host }}"
   delegate_to: "{{ item }}"
   delegate_facts: true
@@ -188,4 +227,9 @@
       * Discovered Galera Host:   {{ mariadb_host }}
       * Discovered RabbitMQ Host: {{ rabbitmq_host }}
       * Active Keystone URL:      {{ keystone_auth_url }}
+      * Dynamic OpenSearch IP:    {{ opensearch_container_ip }}
+      * Dynamic CloudWatcher IP:  {{ safircloudwatcher_container_ip }}
+      * Dynamic Monitoring IP:    {{ safirmonitoring_container_ip }}
+      * Dynamic Grafana IP:       {{ grafana_container_ip }}
+      * HAProxy SSL Cert Path:    {{ haproxy_ssl_cert_path }}
       ==============================================================================

@@ -16,7 +16,7 @@ server {
 
     # 2. Keystone Direct Endpoints (Case-Insensitive Regex)
     location ~* ^/api/openstack/.*keystone/(.*)$ {
-        proxy_pass http://172.29.236.101:5000/$1$is_args$args;
+        proxy_pass {{ (skyline_keystone_url | default(keystone_auth_url) | regex_replace('/v3/?$', '')) }}/$1$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

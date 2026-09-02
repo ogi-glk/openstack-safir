@@ -9,7 +9,7 @@ skyline_apiserver_port: 28000
 skyline_bind_address: "0.0.0.0"
 
 # OpenStack Keystone Authentication Endpoint
-skyline_keystone_url: "{{ keystone_auth_url | default('https://10.8.135.9:5000/v3') }}"
+skyline_keystone_url: "{{ keystone_auth_url }}"
 skyline_default_region: "RegionOne"
 skyline_region_name: "RegionOne"
 skyline_user_default_domain: "Default"

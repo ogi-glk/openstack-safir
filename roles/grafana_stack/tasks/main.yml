@@ -231,7 +231,7 @@
     marker: "# {mark} ANSIBLE MANAGED GRAFANA PROXY"
     block: |
       frontend grafana-front-1
-          bind {{ openstack_public_ip }}:{{ grafana_backend_port }} ssl crt /etc/haproxy/ssl/haproxy_ogi-openstack-2-{{ openstack_public_ip }}.pem alpn h2,http/1.1
+          bind {{ openstack_public_ip }}:{{ grafana_backend_port }}{% if haproxy_ssl_cert_path | default('') != '' %} ssl crt {{ haproxy_ssl_cert_path }} alpn h2,http/1.1{% endif %}
           option httplog
           option forwardfor except 127.0.0.0/8
           http-request add-header X-Forwarded-Proto https
