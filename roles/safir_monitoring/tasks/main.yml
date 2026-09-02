@@ -185,6 +185,30 @@
   ansible.builtin.set_fact:
     galera_ct: "{{ (lxc_list.stdout_lines | select('search', 'galera') | list | first) | default('') }}"
 
+- name: Dynamically discover Galera and OpenSearch container IPs
+  ansible.builtin.shell: |
+    python3 -c "
+    import subprocess, re, json
+    out = subprocess.check_output(['lxc-ls', '-f']).decode()
+    g_ip = ''
+    os_ip = ''
+    for line in out.splitlines():
+        if 'galera' in line and not g_ip:
+            ips = re.findall(r'172\.29\.\d+\.\d+', line)
+            if ips: g_ip = ips[0]
+        if 'opensearch' in line and not os_ip:
+            ips = re.findall(r'172\.29\.\d+\.\d+', line)
+            if ips: os_ip = ips[0]
+    print(json.dumps({'galera_ip': g_ip, 'opensearch_ip': os_ip}))
+    "
+  register: dynamic_infra_ips
+  changed_when: false
+
+- name: Apply dynamic infrastructure IPs
+  ansible.builtin.set_fact:
+    mariadb_host: "{{ (dynamic_infra_ips.stdout | from_json).galera_ip if (dynamic_infra_ips.stdout | from_json).galera_ip != '' else mariadb_host }}"
+    opensearch_container_ip: "{{ (dynamic_infra_ips.stdout | from_json).opensearch_ip if (dynamic_infra_ips.stdout | from_json).opensearch_ip != '' else opensearch_container_ip }}"
+
 - name: Create SafirMonitoring database and user in MariaDB
   ansible.builtin.command:
     cmd: >
