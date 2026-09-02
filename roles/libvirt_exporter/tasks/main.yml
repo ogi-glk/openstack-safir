@@ -34,7 +34,7 @@
 - name: 4. Compile prometheus-libvirt-exporter Binary
   ansible.builtin.shell: |
     cd {{ libvirt_exporter_src_dir }}
-    sed -i 's/go 1.24/go 1.22/' go.mod 2>/dev/null || true
+    sed -i -E 's/go 1\.2[34]\.?[0-9]*/go 1.22.0/g' go.mod vendor/modules.txt 2>/dev/null || true
     export GOTOOLCHAIN=local
     export CGO_ENABLED=1
     go build -mod=vendor -o {{ libvirt_exporter_binary_path }} . || go build -o {{ libvirt_exporter_binary_path }} .
