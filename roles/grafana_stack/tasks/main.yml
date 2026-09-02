@@ -128,14 +128,19 @@
   changed_when: false
   failed_when: false
 
+- name: Copy host DNS configuration into container
+  ansible.builtin.copy:
+    src: "/etc/resolv.conf"
+    dest: "/var/lib/lxc/{{ grafana_container_name }}/rootfs/etc/resolv.conf"
+    remote_src: true
+    mode: "0644"
+
 - name: Install Grafana OSS & Python dependencies inside container
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ grafana_container_name }} -- bash -c
-      "echo -e 'nameserver 10.0.3.1\nnameserver 8.8.8.8' > /etc/resolv.conf &&
-       apt-get update -qq && apt-get install -y -qq curl gnupg2 apt-transport-https python3-fastapi python3-uvicorn python3-httpx python3-requests &&
-       mkdir -p /etc/apt/keyrings/ &&
-       curl -fsSL {{ grafana_repo_gpg_url }} | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg &&
+      "mkdir -p /etc/apt/keyrings/ &&
+       curl -fsSL --retry 3 --connect-timeout 10 {{ grafana_repo_gpg_url }} | gpg --dearmor -o /etc/apt/keyrings/grafana.gpg &&
        echo 'deb [signed-by=/etc/apt/keyrings/grafana.gpg] {{ grafana_repo_url }} stable main' > /etc/apt/sources.list.d/grafana.list &&
        apt-get update -qq &&
        apt-get install -y -qq grafana"
