@@ -210,3 +210,32 @@
   loop:
     - skyline-apiserver
     - nginx
+
+- name: 13. Register Safir Services & Endpoints in Keystone Catalog for Skyline Menu Visibility
+  ansible.builtin.shell: |
+    UTILITY_CT=$(lxc-ls -1 | grep utility | head -n 1)
+    if [ -n "$UTILITY_CT" ]; then
+      lxc-attach -n $UTILITY_CT -- bash -c '
+        source /root/openrc
+        # 1. SafirMonitoring
+        openstack service create --name safirmonitoring --description "Safir Monitoring Service" safirmonitoring 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirmonitoring public http://{{ openstack_public_ip }}:{{ safirmonitoring_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirmonitoring internal http://{{ safirmonitoring_container_ip }}:{{ safirmonitoring_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirmonitoring admin http://{{ safirmonitoring_container_ip }}:{{ safirmonitoring_api_port }} 2>/dev/null || true
+
+        # 2. SafirCloudWatcher
+        openstack service create --name safir_cloud_watcher --description "Safir Cloud Watcher Service" safir_cloud_watcher 2>/dev/null || true
+        openstack endpoint create --region RegionOne safir_cloud_watcher public http://{{ openstack_public_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safir_cloud_watcher internal http://{{ safircloudwatcher_container_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+        openstack endpoint create --region RegionOne safir_cloud_watcher admin http://{{ safircloudwatcher_container_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+
+        # 3. Safir Gocmen (Migration)
+        openstack service create --name safirmigration --description "Safir Gocmen Migration Service" safirmigration 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirmigration public http://{{ openstack_public_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+
+        # 4. Safir LogAuth
+        openstack service create --name safirlogauth --description "Safir LogAuth Service" safirlogauth 2>/dev/null || true
+        openstack endpoint create --region RegionOne safirlogauth public http://{{ openstack_public_ip }}:{{ safircloudwatcher_api_port }} 2>/dev/null || true
+      '
+    fi
+  changed_when: true
