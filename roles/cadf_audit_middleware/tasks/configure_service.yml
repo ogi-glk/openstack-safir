@@ -1,4 +1,4 @@
-﻿---
+---
 # ==============================================================================
 # Configure CADF Audit for a single OpenStack service
 # ==============================================================================
@@ -27,7 +27,7 @@
 
 - name: "Paste Pipeline | Inject [filter:audit] and update pipeline in {{ service_item.name }}"
   ansible.builtin.command:
-    cmd: >
+    cmd: |
       lxc-attach -n {{ matching_ct }} -- python3 -c '
       import os, re
       paste_path = "{{ service_item.paste_path }}"
@@ -59,7 +59,7 @@
 
 - name: "Conf Settings | Enable oslo_messaging_notifications and proxy parsing for {{ service_item.name }}"
   ansible.builtin.command:
-    cmd: >
+    cmd: |
       lxc-attach -n {{ matching_ct }} -- python3 -c '
       import configparser, os
       conf_path = "{{ service_item.conf_path }}"

@@ -1,4 +1,4 @@
-﻿---
+---
 # ==============================================================================
 # OpenStack CADF Audit Middleware Automation Tasks
 # ==============================================================================
@@ -25,7 +25,7 @@
   vars:
     keystone_ct: "{{ lxc_full_list.stdout_lines | select('search', 'keystone-container') | first }}"
   ansible.builtin.command:
-    cmd: >
+    cmd: |
       lxc-attach -n {{ keystone_ct }} -- python3 -c '
       conf_path = "/etc/keystone/keystone.conf"
       with open(conf_path, "r") as f:
