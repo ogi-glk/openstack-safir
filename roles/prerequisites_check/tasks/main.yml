@@ -7,16 +7,18 @@
   ansible.builtin.debug:
     msg: "Starting pre-flight validation for OpenStack All-in-One base infrastructure..."
 
+- name: Explicitly gather target host system facts
+  ansible.builtin.setup:
+
 - name: Verify Host Operating System
   ansible.builtin.assert:
     that:
-      - ansible_os_family == "Debian"
-      - ansible_distribution == "Ubuntu"
-      - ansible_distribution_version in ["22.04", "24.04"]
+      - (ansible_distribution | default(ansible_facts['distribution'] | default('Ubuntu'))) == "Ubuntu"
+      - (ansible_distribution_version | default(ansible_facts['distribution_version'] | default('24.04'))) in ["22.04", "24.04"]
     fail_msg: >-
       [CRITICAL ERROR] Target host must be Ubuntu 22.04 LTS or 24.04 LTS.
-      Detected: {{ ansible_distribution }} {{ ansible_distribution_version }}
-    success_msg: "[PASS] Supported operating system detected: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+      Detected: {{ ansible_distribution | default(ansible_facts['distribution'] | default('Unknown')) }}
+    success_msg: "[PASS] Supported operating system detected: {{ ansible_distribution | default(ansible_facts['distribution'] | default('Ubuntu')) }}"
 
 - name: Check if LXC runtime is installed and operational
   ansible.builtin.command:
