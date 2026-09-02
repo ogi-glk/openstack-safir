@@ -36,8 +36,21 @@ Bu doküman; **OpenStack-Ansible (2024.1 Caracal / Ubuntu 24.04 / Python 3.12)**
 * **Sorun 1 (API Paketi Eksikliği):** `skyline-apiserver` paketi standart PyPI deposunda yer almadığı için `ModuleNotFoundError: No module named 'skyline_apiserver'` hatasıyla servis çöküyordu.
   * **Çözüm:** `roles/skyline_dashboard/tasks/main.yml` içinde API sunucusu OpenStack'in resmi deposundan (`git+https://opendev.org/openstack/skyline-apiserver.git`) kurulacak şekilde güncellendi.
 * **Sorun 2 (Oturum / SQLite Veritabanı):** API sunucusu ayağa kalktığında ilk girişte oturum tablosu bulunamadığı için `401 Unauthorized` dönüyordu.
-  * **Çözüm:** `METADATA.create_all(bind=engine)` ile SQLite tablolarının servis başlarken otomatik oluşturulması ve yetkilendirilmesi sağlandı.
-* **Sorun 3 (Safir Menülerinin Gizlenmesi):** Türk Telekom React frontend paketi (`skyline_console-7.1.0`), menüleri göstermeden önce `checkEndpoint` fonksiyonuyla Keystone servis kataloğunu sorguluyordu. Keystone'da eşleşmeyen servisler olduğunda **Göçmen (Migration), LogAuth (Log Management), Marketplace, Billing, API Gateway** gibi Türk Telekom modülleri arayüzde gizleniyordu.
+  * **Çözüm:** `METADATA.create_all(bind=engine)` ile SQLite tablolarının servis başlarken otomatik oluşturulması sağlanmıştır.
+
+### 10. Skyline API Proxy & Nova CADF Audit Fix (Web Dashboard & Quotas)
+- **Sorun 1 (Nginx API 404 & Barbican Döngüsü):**
+  - Skyline React frontend'i Nova, Neutron, Cinder ve Glance çağrılarını `/api/openstack/regionone/...` yoluyla doğrudan Nginx üzerinden çekmek istiyordu. Nginx'te bu reverse-proxy blokları tanımlı olmadığı için tüm API çağrıları 404 alıyordu.
+  - Ortamda Barbican kurulu olmadığı için `/v1/secrets` çağrıları sonsuz döngüye giriyordu.
+  - **Çözüm:** `roles/skyline_dashboard/templates/nginx_skyline.conf.j2` dosyasına Nova (8774), Cinder (8776), Glance (9292), Neutron (9696), Heat (8004), Placement (8778) dinamik proxy yönlendirmeleri ve Barbican için zararsız JSON fallback eklendi.
+- **Sorun 2 (Skyline Backend `interface_type`):**
+  - `skyline.yaml` içerisinde `interface_type` varsayılan olarak `public` kaldığı için Skyline API server iç yönetim ağı yerine dış SSL adreslerine gitmeye çalışıyordu.
+  - **Çözüm:** `roles/skyline_dashboard/templates/skyline.yaml.j2` ve `defaults/main.yml` içinde `interface_type: "internal"` olarak sabitlendi.
+- **Sorun 3 (Nova API 503 & CADF Audit Map Eksikliği):**
+  - Phase 3 CADF Audit Middleware konfigürasyonunda Nova'nın `api-paste.ini` dosyasına eklenen audit filtresi `/etc/nova/api_audit_map.conf` dosyasını arıyordu. Dosya LXC konteyner içinde bulunamadığı için Nova uWSGI worker'ları `FileNotFoundError` ile Segmentation Fault alıp çöküyordu.
+  - **Çözüm:** `roles/cadf_audit_middleware/tasks/configure_service.yml` içinde `ansible.builtin.copy` yerine `lxc-attach` kullanılarak audit map dosyaları doğrudan konteynerlerin içine yazıldı ve servisler yeniden başlatıldı.
+
+* **Sorun 4 (Safir Menülerinin Gizlenmesi):** Türk Telekom React frontend paketi (`skyline_console-7.1.0`), menüleri göstermeden önce `checkEndpoint` fonksiyonuyla Keystone servis kataloğunu sorguluyordu. Keystone'da eşleşmeyen servisler olduğunda **Göçmen (Migration), LogAuth (Log Management), Marketplace, Billing, API Gateway** gibi Türk Telekom modülleri arayüzde gizleniyordu.
   * **Çözüm (Hibrit Çözüm):**
     1. **Frontend Yaması:** `main.bundle.*.js` ve `basic.bundle.*.js` dosyalarındaki `checkEndpoint` fonksiyonu yamalanarak tüm Safir menülerinin panelde **her zaman ve koşulsuz görünmesi** sağlandı.
     2. **Keystone Kayıtları:** `safirmonitoring`, `safir_cloud_watcher`, `safirmigration`, `safirlogauth`, `safir_marketplace`, `billing`, `safir_apigateway` servis ve uç noktaları (public/internal/admin) Keystone kataloğuna otomatik eklendi.
