@@ -182,8 +182,14 @@
     mode: "0644"
 
 - name: Find Galera / MariaDB container
+  ansible.builtin.shell: |
+    lxc-ls -1 | grep -E "galera|mariadb" | head -n 1
+  register: galera_ct_res
+  changed_when: false
+
+- name: Set galera_ct fact
   ansible.builtin.set_fact:
-    galera_ct: "{{ (lxc_list.stdout_lines | select('search', 'galera') | list | first) | default('') }}"
+    galera_ct: "{{ galera_ct_res.stdout.strip() }}"
 
 - name: Dynamically discover Galera and OpenSearch container IPs
   ansible.builtin.shell: |
@@ -215,7 +221,11 @@
       lxc-attach -n {{ galera_ct }} -- mysql -e
       "CREATE DATABASE IF NOT EXISTS {{ safirmonitoring_db_name }} CHARACTER SET utf8;
        CREATE USER IF NOT EXISTS '{{ safirmonitoring_db_user }}'@'%' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
+       ALTER USER '{{ safirmonitoring_db_user }}'@'%' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
        GRANT ALL PRIVILEGES ON {{ safirmonitoring_db_name }}.* TO '{{ safirmonitoring_db_user }}'@'%';
+       CREATE USER IF NOT EXISTS '{{ safirmonitoring_db_user }}'@'localhost' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
+       ALTER USER '{{ safirmonitoring_db_user }}'@'localhost' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
+       GRANT ALL PRIVILEGES ON {{ safirmonitoring_db_name }}.* TO '{{ safirmonitoring_db_user }}'@'localhost';
        FLUSH PRIVILEGES;"
   when: galera_ct != ''
   changed_when: false
