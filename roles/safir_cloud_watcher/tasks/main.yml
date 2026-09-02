@@ -274,12 +274,27 @@
         [Install]
         WantedBy=multi-user.target
 
+    - name: "safircloudwatcher-api"
+      content: |
+        [Unit]
+        Description=SafirCloudWatcher API Service
+        After=network.target
+
+        [Service]
+        Type=simple
+        ExecStart=/openstack/venvs/safircloudwatcher-31.2.0/bin/gunicorn --bind 0.0.0.0:{{ safircloudwatcher_api_port | default(8839) }} --workers 2 "safir_cloud_watcher.api.app:setup_app()"
+        Restart=always
+        RestartSec=3
+
+        [Install]
+        WantedBy=multi-user.target
+
 - name: Enable and restart SafirCloudWatcher services
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ scw_ct }} -- bash -c
-      "systemctl daemon-reload && systemctl enable safircloudwatcher-event-manager safircloudwatcher-processor &&
-       systemctl restart safircloudwatcher-event-manager safircloudwatcher-processor"
+      "systemctl daemon-reload && systemctl enable safircloudwatcher-event-manager safircloudwatcher-processor safircloudwatcher-api &&
+       systemctl restart safircloudwatcher-event-manager safircloudwatcher-processor safircloudwatcher-api"
   changed_when: true
 
 - name: Verify SafirCloudWatcher services health
@@ -288,6 +303,7 @@
   loop:
     - "safircloudwatcher-event-manager"
     - "safircloudwatcher-processor"
+    - "safircloudwatcher-api"
   register: scw_health
   until: scw_health.stdout == "active"
   retries: 5
