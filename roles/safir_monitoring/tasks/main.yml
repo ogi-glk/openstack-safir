@@ -219,17 +219,16 @@
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ galera_ct }} -- mysql -e
-      "CREATE DATABASE IF NOT EXISTS {{ safirmonitoring_db_name }} CHARACTER SET utf8;
+      "CREATE DATABASE IF NOT EXISTS `{{ safirmonitoring_db_name }}` CHARACTER SET utf8;
        CREATE USER IF NOT EXISTS '{{ safirmonitoring_db_user }}'@'%' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
-       ALTER USER '{{ safirmonitoring_db_user }}'@'%' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
-       GRANT ALL PRIVILEGES ON {{ safirmonitoring_db_name }}.* TO '{{ safirmonitoring_db_user }}'@'%';
+       SET PASSWORD FOR '{{ safirmonitoring_db_user }}'@'%' = PASSWORD('{{ safirmonitoring_db_password }}');
+       GRANT ALL PRIVILEGES ON `{{ safirmonitoring_db_name }}`.* TO '{{ safirmonitoring_db_user }}'@'%';
        CREATE USER IF NOT EXISTS '{{ safirmonitoring_db_user }}'@'localhost' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
-       ALTER USER '{{ safirmonitoring_db_user }}'@'localhost' IDENTIFIED BY '{{ safirmonitoring_db_password }}';
-       GRANT ALL PRIVILEGES ON {{ safirmonitoring_db_name }}.* TO '{{ safirmonitoring_db_user }}'@'localhost';
+       SET PASSWORD FOR '{{ safirmonitoring_db_user }}'@'localhost' = PASSWORD('{{ safirmonitoring_db_password }}');
+       GRANT ALL PRIVILEGES ON `{{ safirmonitoring_db_name }}`.* TO '{{ safirmonitoring_db_user }}'@'localhost';
        FLUSH PRIVILEGES;"
   when: galera_ct != ''
   changed_when: false
-  failed_when: false
 
 - name: Deploy SafirMonitoring main configuration file
   ansible.builtin.copy:
