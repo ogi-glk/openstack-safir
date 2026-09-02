@@ -158,16 +158,15 @@
     state: directory
     mode: "0755"
 
-- name: Deploy SafirMonitoring main configuration file
-  ansible.builtin.template:
-    src: "safirmonitoring.conf.j2"
-    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring/safirmonitoring.conf"
-    mode: "0640"
+- name: Fix PasteDeploy pipeline to use direct ASGI application
+  ansible.builtin.copy:
+    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring/api_paste.ini"
+    content: |
+      [pipeline:main]
+      pipeline = safir_monitoring
 
-- name: Deploy SafirMonitoring PasteDeploy pipeline
-  ansible.builtin.template:
-    src: "api-paste.ini.j2"
-    dest: "/var/lib/lxc/{{ sm_ct }}/rootfs/etc/safirmonitoring/api-paste.ini"
+      [app:safir_monitoring]
+      paste.app_factory = safir_monitoring.main:app_factory
     mode: "0644"
 
 - name: Optimize Gunicorn worker configuration
