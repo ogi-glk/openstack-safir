@@ -281,8 +281,8 @@
   ansible.builtin.command:
     cmd: >
       lxc-attach -n {{ scw_ct }} -- bash -c
-      "systemctl daemon-reload && systemctl enable safircloudwatcher-api safircloudwatcher-event-manager safircloudwatcher-processor 2>/dev/null || true;
-       systemctl restart safircloudwatcher-api safircloudwatcher-event-manager safircloudwatcher-processor"
+      "systemctl daemon-reload && systemctl enable safircloudwatcher-event-manager safircloudwatcher-processor &&
+       systemctl restart safircloudwatcher-event-manager safircloudwatcher-processor"
   changed_when: true
 
 - name: Verify SafirCloudWatcher services health
