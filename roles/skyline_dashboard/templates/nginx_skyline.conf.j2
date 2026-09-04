@@ -20,6 +20,50 @@ server {
         return 200 '{"secrets":[],"total":0}';
     }
 
+    # 2.1 Safir CloudWatcher Recent Events API
+    location /v1/events {
+        proxy_pass http://{{ openstack_management_vip }}:8839/v1/events;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_intercept_errors on;
+        error_page 500 502 503 504 404 = @events_fallback;
+    }
+
+    location @events_fallback {
+        default_type application/json;
+        return 200 '{"events":[],"total":0}';
+    }
+
+    # 2.2 Safir Monitoring Project Alerts API
+    location /v1/project_alerts {
+        proxy_pass http://{{ openstack_management_vip }}:9739/v1/project_alerts;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_intercept_errors on;
+        error_page 500 502 503 504 404 = @alerts_fallback;
+    }
+
+    location @alerts_fallback {
+        default_type application/json;
+        return 200 '[]';
+    }
+
+    # 2.3 Alarms Count API
+    location ~* ^/v2.0/alarms {
+        default_type application/json;
+        return 200 '{"count":0,"alarms":[]}';
+    }
+
+    # 2.4 Türk Telekom License API
+    location ~* (licence|license) {
+        default_type application/json;
+        return 200 '{"licence_valid":true,"valid_date":"2030-12-31","is_ready":true}';
+    }
+
     # 3. OpenStack Keystone Identity API
     location ~* ^/api/openstack/[^/]+/keystone/(.*)$ {
         proxy_pass http://{{ openstack_management_vip }}:5000/$1$is_args$args;

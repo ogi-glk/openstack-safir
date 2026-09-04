@@ -56,6 +56,10 @@ Bu doküman; **OpenStack-Ansible (2024.1 Caracal / Ubuntu 24.04 / Python 3.12)**
 - **Sorun 5 (OpenSearch Dashboards Port 5601 & Dinamik IP Keşfi):**
   - OpenSearch konteyneri birden fazla IP veya dinamik yönetim IP'si aldığında, HAProxy eski veya eşleşmeyen bir IP'yi (örn: `.215`) dinlemeye devam ettiği için `L4CON (Connection refused)` alıp `503 Service Unavailable` dönüyordu.
   - **Çözüm:** `roles/opensearch_stack/tasks/main.yml` içerisine HAProxy bloğundan önce konteynerin aktif dinleyen yönetim IP'sini dinamik tespit eden keşif adımı eklendi ve HAProxy gerçek IP (`.217`) ile güncellendi.
+- **Sorun 6 (Türk Telekom Son Olaylar / Recent Events & Alarmlar Nginx Yönlendirmesi):**
+  - Skyline React frontend'i Son Olaylar için `/v1/events`, alarmlar için `/v1/project_alerts` ve lisans bilgisi için istek atıyordu. Nginx'te bu rotalar eksik olduğu için Nginx SPA kuralı gereği doğrudan `index.html` (HTML çıktısı) dönüyordu.
+  - Frontend gelen HTML'i JSON olarak ayrıştıramadığı için `Cannot read properties of undefined (reading 'length')` hatası veriyor ve Son Olaylar tablosu boş kalıyordu.
+  - **Çözüm:** `roles/skyline_dashboard/templates/nginx_skyline.conf.j2` içerisine `/v1/events` (Safir CloudWatcher 8839), `/v1/project_alerts` (Safir Monitoring 9739), `/v2.0/alarms` ve lisans rotaları zararsız JSON fallback blokları ile eklendi.
 
 * **Sorun 4 (Safir Menülerinin Gizlenmesi):** Türk Telekom React frontend paketi (`skyline_console-7.1.0`), menüleri göstermeden önce `checkEndpoint` fonksiyonuyla Keystone servis kataloğunu sorguluyordu. Keystone'da eşleşmeyen servisler olduğunda **Göçmen (Migration), LogAuth (Log Management), Marketplace, Billing, API Gateway** gibi Türk Telekom modülleri arayüzde gizleniyordu.
   * **Çözüm (Hibrit Çözüm):**
