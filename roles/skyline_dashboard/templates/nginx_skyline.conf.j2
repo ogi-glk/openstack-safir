@@ -82,7 +82,7 @@ server {
 
     # 9. OpenStack Placement API
     location ~* ^/api/openstack/[^/]+/placement/(.*)$ {
-        proxy_pass http://{{ openstack_management_vip }}:8778/$1$is_args$args;
+        proxy_pass http://{{ openstack_management_vip }}:8780/$1$is_args$args;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

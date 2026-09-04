@@ -49,6 +49,10 @@ Bu doküman; **OpenStack-Ansible (2024.1 Caracal / Ubuntu 24.04 / Python 3.12)**
 - **Sorun 3 (Nova API 503 & CADF Audit Map Eksikliği):**
   - Phase 3 CADF Audit Middleware konfigürasyonunda Nova'nın `api-paste.ini` dosyasına eklenen audit filtresi `/etc/nova/api_audit_map.conf` dosyasını arıyordu. Dosya LXC konteyner içinde bulunamadığı için Nova uWSGI worker'ları `FileNotFoundError` ile Segmentation Fault alıp çöküyordu.
   - **Çözüm:** `roles/cadf_audit_middleware/tasks/configure_service.yml` içinde `ansible.builtin.copy` yerine `lxc-attach` kullanılarak audit map dosyaları doğrudan konteynerlerin içine yazıldı ve servisler yeniden başlatıldı.
+- **Sorun 4 (Placement API 502 Bad Gateway & Port 8780 Uyuşmazlığı):**
+  - Genel Bakış (`/base/overview-admin`) sayfasında envanter ve kaynak sağlayıcılar çekilirken Nginx `502 Bad Gateway (Connection refused to 8778)` hatası alıyordu. React frontend'i envanter dizisini okuyamayınca `TypeError: Cannot read properties of undefined (reading 'map')` hatası veriyordu.
+  - OpenStack-Ansible mimarisinde HAProxy Placement servisini 8778 yerine **8780** portunda çalıştırmaktadır.
+  - **Çözüm:** `roles/skyline_dashboard/templates/nginx_skyline.conf.j2` dosyasındaki Placement proxy yönlendirmesi `http://{{ openstack_management_vip }}:8780/` olarak güncellendi.
 
 * **Sorun 4 (Safir Menülerinin Gizlenmesi):** Türk Telekom React frontend paketi (`skyline_console-7.1.0`), menüleri göstermeden önce `checkEndpoint` fonksiyonuyla Keystone servis kataloğunu sorguluyordu. Keystone'da eşleşmeyen servisler olduğunda **Göçmen (Migration), LogAuth (Log Management), Marketplace, Billing, API Gateway** gibi Türk Telekom modülleri arayüzde gizleniyordu.
   * **Çözüm (Hibrit Çözüm):**
