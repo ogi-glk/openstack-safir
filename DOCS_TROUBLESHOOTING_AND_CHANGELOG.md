@@ -53,6 +53,9 @@ Bu doküman; **OpenStack-Ansible (2024.1 Caracal / Ubuntu 24.04 / Python 3.12)**
   - Genel Bakış (`/base/overview-admin`) sayfasında envanter ve kaynak sağlayıcılar çekilirken Nginx `502 Bad Gateway (Connection refused to 8778)` hatası alıyordu. React frontend'i envanter dizisini okuyamayınca `TypeError: Cannot read properties of undefined (reading 'map')` hatası veriyordu.
   - OpenStack-Ansible mimarisinde HAProxy Placement servisini 8778 yerine **8780** portunda çalıştırmaktadır.
   - **Çözüm:** `roles/skyline_dashboard/templates/nginx_skyline.conf.j2` dosyasındaki Placement proxy yönlendirmesi `http://{{ openstack_management_vip }}:8780/` olarak güncellendi.
+- **Sorun 5 (OpenSearch Dashboards Port 5601 & Dinamik IP Keşfi):**
+  - OpenSearch konteyneri birden fazla IP veya dinamik yönetim IP'si aldığında, HAProxy eski veya eşleşmeyen bir IP'yi (örn: `.215`) dinlemeye devam ettiği için `L4CON (Connection refused)` alıp `503 Service Unavailable` dönüyordu.
+  - **Çözüm:** `roles/opensearch_stack/tasks/main.yml` içerisine HAProxy bloğundan önce konteynerin aktif dinleyen yönetim IP'sini dinamik tespit eden keşif adımı eklendi ve HAProxy gerçek IP (`.217`) ile güncellendi.
 
 * **Sorun 4 (Safir Menülerinin Gizlenmesi):** Türk Telekom React frontend paketi (`skyline_console-7.1.0`), menüleri göstermeden önce `checkEndpoint` fonksiyonuyla Keystone servis kataloğunu sorguluyordu. Keystone'da eşleşmeyen servisler olduğunda **Göçmen (Migration), LogAuth (Log Management), Marketplace, Billing, API Gateway** gibi Türk Telekom modülleri arayüzde gizleniyordu.
   * **Çözüm (Hibrit Çözüm):**

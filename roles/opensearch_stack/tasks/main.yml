@@ -171,6 +171,21 @@
       "systemctl daemon-reload && systemctl enable opensearch opensearch-dashboards && systemctl restart opensearch opensearch-dashboards"
   changed_when: true
 
+- name: Discover active IP of OpenSearch container
+  ansible.builtin.shell: |
+    python3 -c "
+    import subprocess, re
+    out = subprocess.check_output(['lxc-attach', '-n', '{{ opensearch_container_name }}', '--', 'ip', '-4', 'addr', 'show']).decode()
+    ips = re.findall(r'172\.29\.\d+\.\d+', out)
+    print(ips[-1] if ips else '{{ opensearch_container_ip }}')
+    "
+  register: os_discovered_ip
+  changed_when: false
+
+- name: Update opensearch_container_ip fact
+  ansible.builtin.set_fact:
+    opensearch_container_ip: "{{ os_discovered_ip.stdout.strip() }}"
+
 - name: Wait for OpenSearch REST API to become ready
   ansible.builtin.uri:
     url: "http://{{ opensearch_container_ip }}:{{ opensearch_http_port }}/"
